@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>K3s AI Monitor — Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0D1117;
+    --surface:#161B22;
+    --surface2:#1C2330;
+    --border:#2A3441;
+    --accent:#3B82F6;
+    --accent2:#10B981;
+    --warn:#F59E0B;
+    --danger:#EF4444;
+    --text:#E6EDF3;
+    --muted:#7D8FA4;
+    --purple:#8B5CF6;
+  }
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-height:100vh}
+
+  /* ── TOP BAR ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .topbar-left{display:flex;align-items:center;gap:12px}
+  .logo{font-weight:700;font-size:15px;color:var(--accent);letter-spacing:-.3px}
+  .tag{font-size:10px;padding:2px 8px;border-radius:99px;font-weight:600}
+  .tag-live{background:#10B98120;color:var(--accent2);border:1px solid #10B98140}
+  .tag-warn{background:#F59E0B20;color:var(--warn);border:1px solid #F59E0B40}
+  .topbar-right{display:flex;align-items:center;gap:10px}
+  .btn{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:opacity .15s}
+  .btn:hover{opacity:.85}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+  .branch-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif}
+
+  /* ── LAYOUT ── */
+  .layout{display:grid;grid-template-columns:200px 1fr;height:calc(100vh - 46px)}
+
+  /* ── SIDEBAR ── */
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px 0;display:flex;flex-direction:column;gap:2px}
+  .nav-section{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:12px 16px 4px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;color:var(--muted);cursor:pointer;border-left:3px solid transparent;transition:all .15s;font-size:12px}
+  .nav-item:hover{color:var(--text);background:var(--surface2)}
+  .nav-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--accent)}
+  .nav-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .dot-green{background:var(--accent2)}
+  .dot-blue{background:var(--accent)}
+  .dot-warn{background:var(--warn)}
+  .dot-muted{background:var(--border)}
+
+  /* ── MAIN ── */
+  .main{overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+
+  /* ── STAT CARDS ── */
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .stat-label{font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:500}
+  .stat-val{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
+  .stat-sub{font-size:11px;margin-top:4px}
+  .up{color:var(--accent2)}
+  .warn{color:var(--warn)}
+  .danger{color:var(--danger)}
+  .stat-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;margin-top:6px}
+  .badge-green{background:#10B98120;color:var(--accent2)}
+  .badge-warn{background:#F59E0B20;color:var(--warn)}
+  .badge-blue{background:#3B82F620;color:var(--accent)}
+
+  /* ── GRID ── */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+
+  /* ── CARD ── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+  .card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .card-title{font-weight:600;font-size:13px}
+  .card-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+
+  /* ── CHART ── */
+  .chart-wrap{position:relative}
+  svg.chart{width:100%;overflow:visible}
+
+  /* ── AI FORECAST ── */
+  .forecast-row{display:flex;gap:8px;margin-top:8px}
+  .fc-block{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 8px;text-align:center}
+  .fc-time{font-size:10px;color:var(--muted);margin-bottom:4px}
+  .fc-val{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace}
+  .fc-bar{height:4px;border-radius:2px;margin-top:6px;background:var(--border)}
+  .fc-fill{height:4px;border-radius:2px;margin-top:-4px}
+
+  /* ── POD TABLE ── */
+  table{width:100%;border-collapse:collapse}
+  th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)}
+  td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px}
+  tr:last-child td{border-bottom:none}
+  .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+
+  /* ── THRESHOLD ── */
+  .thresh-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .thresh-row:last-child{border-bottom:none}
+  .thresh-label{flex:1;font-size:12px}
+  .thresh-desc{font-size:10px;color:var(--muted);margin-top:2px}
+  .thresh-input{width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;text-align:center}
+  .thresh-unit{font-size:11px;color:var(--muted)}
+
+  /* ── ACTION BUTTONS ── */
+  .action-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn-danger {background:#EF444420;color:var(--danger);border:1px solid #EF444440;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+  .btn-success{background:#10B98120;color:var(--accent2);border:1px solid #10B98140;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+  .btn-warn2  {background:#F59E0B20;color:var(--warn);border:1px solid #F59E0B40;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+  .btn-purple {background:#8B5CF620;color:var(--purple);border:1px solid #8B5CF640;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+  .btn-danger:hover,.btn-success:hover,.btn-warn2:hover,.btn-purple:hover{opacity:.8}
+
+  /* ── ALERT LOG ── */
+  .alert-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .alert-item:last-child{border-bottom:none}
+  .alert-icon{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
+  .alert-time{font-size:10px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace}
+  .alert-msg{font-size:12px}
+
+  /* ── TOAST ── */
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:12px;color:var(--text);box-shadow:0 8px 24px #0008;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:999}
+  .toast.show{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- TOAST NOTIFICATION -->
+<div class="toast" id="toast"></div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">⬡ K3s AI Monitor</div>
+    <span class="tag tag-live">● LIVE</span>
+    <span class="tag tag-warn" id="alert-badge">⚠ TỰ ĐỘNG</span>
+  </div>
+  <div class="topbar-right">
+    <select class="branch-select" onchange="showToast('Đã chuyển chi nhánh: ' + this.value)">
+      <option>Chi nhánh: Tất cả</option>
+      <option>Chi nhánh Hà Nội</option>
+      <option>Chi nhánh HCM</option>
+      <option>Chi nhánh Đà Nẵng</option>
+    </select>
+    <button class="btn btn-ghost" onclick="showToast('Đang xuất báo cáo PDF…')">Xuất báo cáo</button>
+    <button class="btn btn-primary" onclick="showToast('Chức năng thêm chi nhánh')">+ Thêm chi nhánh</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="nav-section">Tổng quan</div>
+    <div class="nav-item active"><span class="nav-dot dot-blue"></span>Dashboard</div>
+    <div class="nav-item"><span class="nav-dot dot-muted"></span>Toàn bộ chi nhánh</div>
+
+    <div class="nav-section">Giám sát</div>
+    <div class="nav-item"><span class="nav-dot dot-green"></span>Metrics realtime</div>
+    <div class="nav-item"><span class="nav-dot dot-blue"></span>AI dự báo tải</div>
+    <div class="nav-item"><span class="nav-dot dot-warn"></span>Lịch sử cảnh báo</div>
+
+    <div class="nav-section">Điều phối</div>
+    <div class="nav-item"><span class="nav-dot dot-green"></span>Quản lý Pod</div>
+    <div class="nav-item"><span class="nav-dot dot-blue"></span>HPA / VPA</div>
+    <div class="nav-item"><span class="nav-dot dot-muted"></span>Can thiệp thủ công</div>
+
+    <div class="nav-section">Cài đặt</div>
+    <div class="nav-item"><span class="nav-dot dot-warn"></span>Ngưỡng cảnh báo</div>
+    <div class="nav-item"><span class="nav-dot dot-blue"></span>Retrain mô hình</div>
+    <div class="nav-item"><span class="nav-dot dot-muted"></span>Thông báo email</div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+
+    <!-- STAT CARDS -->
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-label">CPU trung bình</div>
+        <div class="stat-val warn" id="stat-cpu">78%</div>
+        <div class="stat-sub warn">↑ 12% so với 10 phút trước</div>
+        <span class="stat-badge badge-warn">Gần ngưỡng</span>
+      </div>
+      <div class="stat">
+        <div class="stat-label">RAM trung bình</div>
+        <div class="stat-val up" id="stat-ram">61%</div>
+        <div class="stat-sub up">Ổn định</div>
+        <span class="stat-badge badge-green">Bình thường</span>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Tổng Pod đang chạy</div>
+        <div class="stat-val" id="stat-pods">24</div>
+        <div class="stat-sub up">↑ 3 pod vừa scale up</div>
+        <span class="stat-badge badge-blue">AI điều phối</span>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Độ chính xác AI (24h)</div>
+        <div class="stat-val up">94.2%</div>
+        <div class="stat-sub up">↑ 1.3% sau retrain</div>
+        <span class="stat-badge badge-green">Tốt</span>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">CPU theo thời gian thực</div>
+          <span class="card-badge badge-warn" id="cpu-current-badge">78% hiện tại</span>
+        </div>
+        <div class="chart-wrap">
+          <svg class="chart" viewBox="0 0 360 100">
+            <defs>
+              <linearGradient id="gcpu" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#F59E0B" stop-opacity=".35"/>
+                <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="20" x2="360" y2="20" stroke="#2A3441" stroke-width=".5"/>
+            <line x1="0" y1="50" x2="360" y2="50" stroke="#2A3441" stroke-width=".5"/>
+            <line x1="0" y1="80" x2="360" y2="80" stroke="#2A3441" stroke-width=".5"/>
+            <text x="0" y="18" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">100%</text>
+            <text x="0" y="48" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">50%</text>
+            <text x="0" y="78" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">0%</text>
+            <line x1="22" y1="24" x2="360" y2="24" stroke="#EF4444" stroke-width=".8" stroke-dasharray="4 3"/>
+            <text x="300" y="22" fill="#EF4444" font-size="8">ngưỡng 75%</text>
+            <!-- Thêm ID để Javascript can thiệp vẽ lại -->
+            <path id="cpu-path" d="M22,68 L58,62 L94,60 L130,55 L166,50 L202,46 L238,42 L274,36 L310,30 L346,26 L346,80 L22,80Z" fill="url(#gcpu)"/>
+            <polyline id="cpu-polyline" points="22,68 58,62 94,60 130,55 166,50 202,46 238,42 274,36 310,30 346,26" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="346" cy="26" r="4" fill="#F59E0B"/>
+            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-9m</text>
+            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-5m</text>
+            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-2m</text>
+            <text x="346" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">now</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">RAM theo thời gian thực</div>
+          <span class="card-badge badge-green" id="ram-current-badge">61% hiện tại</span>
+        </div>
+        <div class="chart-wrap">
+          <svg class="chart" viewBox="0 0 360 100">
+            <defs>
+              <linearGradient id="gram" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10B981" stop-opacity=".35"/>
+                <stop offset="100%" stop-color="#10B981" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="20" x2="360" y2="20" stroke="#2A3441" stroke-width=".5"/>
+            <line x1="0" y1="50" x2="360" y2="50" stroke="#2A3441" stroke-width=".5"/>
+            <line x1="0" y1="80" x2="360" y2="80" stroke="#2A3441" stroke-width=".5"/>
+            <text x="0" y="18" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">100%</text>
+            <text x="0" y="48" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">50%</text>
+            <text x="0" y="78" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">0%</text>
+            <!-- Thêm ID để Javascript can thiệp vẽ lại -->
+            <path id="ram-path" d="M22,62 L58,60 L94,57 L130,55 L166,52 L202,50 L238,49 L274,48 L310,47 L346,47 L346,80 L22,80Z" fill="url(#gram)"/>
+            <polyline id="ram-polyline" points="22,62 58,60 94,57 130,55 166,52 202,50 238,49 274,48 310,47 346,47" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="346" cy="47" r="4" fill="#10B981"/>
+            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-9m</text>
+            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-5m</text>
+            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-2m</text>
+            <text x="346" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">now</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI FORECAST + THRESHOLD -->
+    <div class="grid3">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">🤖 AI dự báo tải — 5 phút tới</div>
+          <span class="card-badge" style="background:#8B5CF620;color:#8B5CF6">ONNX Runtime</span>
+        </div>
+        <div class="forecast-row">
+          <div class="fc-block">
+            <div class="fc-time">+1 phút</div>
+            <div class="fc-val warn">82%</div>
+            <div class="fc-bar"></div>
+            <div class="fc-fill" style="background:#F59E0B;width:82%"></div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">+2 phút</div>
+            <div class="fc-val warn">85%</div>
+            <div class="fc-bar"></div>
+            <div class="fc-fill" style="background:#F59E0B;width:85%"></div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">+3 phút</div>
+            <div class="fc-val danger">89%</div>
+            <div class="fc-bar"></div>
+            <div class="fc-fill" style="background:#EF4444;width:89%"></div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">+4 phút</div>
+            <div class="fc-val danger">91%</div>
+            <div class="fc-bar"></div>
+            <div class="fc-fill" style="background:#EF4444;width:91%"></div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">+5 phút</div>
+            <div class="fc-val danger">88%</div>
+            <div class="fc-bar"></div>
+            <div class="fc-fill" style="background:#EF4444;width:88%"></div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:10px;background:#EF444410;border:1px solid #EF444430;border-radius:8px;font-size:12px;color:#EF4444">
+          ⚠ AI dự báo tải vượt 85% trong 3–5 phút tới. Đã tự động scale up 3 pod.
+        </div>
+        <div class="action-row">
+          <button class="btn-success" onclick="scaleUp()">✚ Scale UP thủ công</button>
+          <button class="btn-danger"  onclick="scaleDown()">✕ Scale DOWN</button>
+          <button class="btn-warn2"   onclick="pauseAI()">⏸ Tạm dừng AI</button>
+          <button class="btn-purple"  onclick="activateHPA()">↺ Kích hoạt AI Scale</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Ngưỡng cảnh báo</div>
+          <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="saveThresholds()">Lưu</button>
+        </div>
+        <div class="thresh-row">
+          <div class="thresh-label">CPU cảnh báo<div class="thresh-desc">Gửi thông báo khi vượt</div></div>
+          <input class="thresh-input" id="th-cpu-warn" value="75"/>
+          <span class="thresh-unit">%</span>
+        </div>
+        <div class="thresh-row">
+          <div class="thresh-label">CPU nguy hiểm<div class="thresh-desc">Scale UP ngay lập tức</div></div>
+          <input class="thresh-input" id="th-cpu-crit" value="90"/>
+          <span class="thresh-unit">%</span>
+        </div>
+        <div class="thresh-row">
+          <div class="thresh-label">RAM cảnh báo<div class="thresh-desc">Gửi thông báo khi vượt</div></div>
+          <input class="thresh-input" id="th-ram-warn" value="70"/>
+          <span class="thresh-unit">%</span>
+        </div>
+        <div class="thresh-row">
+          <div class="thresh-label">Scale DOWN khi dưới<div class="thresh-desc">Giảm pod tiết kiệm tài nguyên</div></div>
+          <input class="thresh-input" id="th-scale-down" value="40"/>
+          <span class="thresh-unit">%</span>
+        </div>
+        <div class="thresh-row">
+          <div class="thresh-label">Ngưỡng chuyển HPA/VPA<div class="thresh-desc">Khi AI dự báo vượt mức này</div></div>
+          <input class="thresh-input" id="th-hpa" value="80"/>
+          <span class="thresh-unit">%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- POD TABLE + ALERT LOG -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Danh sách Pod hiện tại</div>
+          <span class="card-badge badge-blue" id="pod-count-badge">24 pods</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tên Pod</th><th>Node</th><th>CPU</th><th>RAM</th><th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="status-dot" style="background:#10B981"></span>api-server-7f4</td>
+              <td style="color:var(--muted)">node-01</td>
+              <td class="warn">82%</td><td class="up">58%</td>
+              <td><span class="stat-badge badge-green">Running</span></td>
+            </tr>
+            <tr>
+              <td><span class="status-dot" style="background:#10B981"></span>api-server-8a1</td>
+              <td style="color:var(--muted)">node-01</td>
+              <td class="warn">79%</td><td class="up">61%</td>
+              <td><span class="stat-badge badge-green">Running</span></td>
+            </tr>
+            <tr>
+              <td><span class="status-dot" style="background:#F59E0B"></span>api-server-9b2</td>
+              <td style="color:var(--muted)">node-02</td>
+              <td class="danger">91%</td><td class="warn">74%</td>
+              <td><span class="stat-badge badge-warn">High load</span></td>
+            </tr>
+            <tr>
+              <td><span class="status-dot" style="background:#10B981"></span>worker-3c5 ✦ mới</td>
+              <td style="color:var(--muted)">node-02</td>
+              <td class="up">12%</td><td class="up">18%</td>
+              <td><span class="stat-badge badge-blue">Scale UP</span></td>
+            </tr>
+            <tr>
+              <td><span class="status-dot" style="background:#10B981"></span>worker-3c6 ✦ mới</td>
+              <td style="color:var(--muted)">node-03</td>
+              <td class="up">9%</td><td class="up">15%</td>
+              <td><span class="stat-badge badge-blue">Scale UP</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Lịch sử hoạt động</div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="showToast('Xem toàn bộ log')">Xem tất cả</button>
+        </div>
+        <div class="alert-item">
+          <div class="alert-icon" style="background:#EF444420;color:#EF4444">⚠</div>
+          <div>
+            <div class="alert-msg">CPU vượt ngưỡng 75% tại node-02</div>
+            <div class="alert-time">14:32:07 — Email đã gửi tới admin@hospital.vn</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-icon" style="background:#10B98120;color:#10B981">↑</div>
+          <div>
+            <div class="alert-msg">AI kích hoạt scale UP: +3 pod (worker-3c4, 3c5, 3c6)</div>
+            <div class="alert-time">14:31:52 — AI dự báo tải 89% trong 3 phút</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-icon" style="background:#8B5CF620;color:#8B5CF6">⟳</div>
+          <div>
+            <div class="alert-msg">Retrain hoàn tất — Độ chính xác tăng 94.2%</div>
+            <div class="alert-time">13:00:00 — 1,240 mẫu dữ liệu mới</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-icon" style="background:#3B82F620;color:#3B82F6">↓</div>
+          <div>
+            <div class="alert-msg">AI kích hoạt scale DOWN: -2 pod</div>
+            <div class="alert-time">11:15:30 — Tải giảm xuống 35% sau giờ cao điểm</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end .main -->
+</div><!-- end .layout -->
+
+<script>
+  // ── Cấu hình đồ thị SVG động ──────────────────────────────
+  const MAX_POINTS = 10;
+  let cpuDataHistory = [60, 65, 70, 68, 72, 75, 74, 76, 78]; 
+  let ramDataHistory = [58, 59, 60, 60, 61, 62, 61, 60, 61];
+  const xCoords = [22, 58, 94, 130, 166, 202, 238, 274, 310, 346];
+
+  function redrawSVGChart(polylineId, pathId, dataHistory) {
+    const polyline = document.getElementById(polylineId);
+    const path = document.getElementById(pathId);
+    if (!polyline || !path) return;
+
+    let points = [];
+    dataHistory.forEach((val, index) => {
+      let x = xCoords[index] || 346;
+      let y = 80 - ((val / 100) * 60); // Ánh xạ 0-100% vào khoảng Y từ 20 đến 80 trên khung SVG
+      if (y < 20) y = 20;
+      if (y > 80) y = 80;
+      points.push(`${x},${y}`);
+    });
+
+    polyline.setAttribute('points', points.join(' '));
+
+    if (points.length > 0) {
+      let firstX = xCoords[0];
+      let lastX = xCoords[points.length - 1];
+      let fillString = `M${firstX},80 L` + points.join(' L') + ` L${lastX},80 Z`;
+      path.setAttribute('d', fillString);
+    }
+  }
+
+  // ── Giao tiếp Fetch API thời gian thực ──────────────────────
+  function fetchSystemStatus() {
+    fetch('/api/status')
+      .then(res => res.json())
+      .then(data => {
+        // Cập nhật thẻ trạng thái chữ
+        document.getElementById('stat-cpu').textContent = data.current_cpu + '%';
+        document.getElementById('stat-ram').textContent = data.current_ram + '%';
+        document.getElementById('stat-pods').textContent = data.current_replicas;
+        document.getElementById('pod-count-badge').textContent = data.current_replicas + ' pods';
+        document.getElementById('cpu-current-badge').textContent = data.current_cpu + '% hiện tại';
+        document.getElementById('ram-current-badge').textContent = data.current_ram + '% hiện tại';
+        
+        // Cập nhật nhãn chế độ vận hành trên Topbar
+        const alertBadge = document.getElementById('alert-badge');
+        if(data.mode === "AUTO") {
+          alertBadge.className = "tag tag-live";
+          alertBadge.textContent = "● AI VẬN HÀNH";
+        } else {
+          alertBadge.className = "tag tag-warn";
+          alertBadge.textContent = "⚠ THỦ CÔNG";
+        }
+
+        // Đẩy dữ liệu vào mảng lịch sử đồ thị
+        cpuDataHistory.push(data.current_cpu);
+        ramDataHistory.push(data.current_ram);
+        if (cpuDataHistory.length > MAX_POINTS) cpuDataHistory.shift();
+        if (ramDataHistory.length > MAX_POINTS) ramDataHistory.shift();
+
+        // Vẽ lại đồ thị SVG
+        redrawSVGChart('cpu-polyline', 'cpu-path', cpuDataHistory);
+        redrawSVGChart('ram-polyline', 'ram-path', ramDataHistory);
+      })
+      .catch(err => console.log("⚠️ Đang đợi kết nối tới Server Backend..."));
+  }
+
+  function sendControlCommand(payload) {
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(() => fetchSystemStatus());
+  }
+
+  function scaleUp() {
+    showToast('✚ Đã yêu cầu hệ thống tăng tài nguyên (+2 Pod)...');
+    sendControlCommand({ mode: 'MANUAL', action: 'SCALE_UP' });
+  }
+
+  function scaleDown() {
+    showToast('✕ Đã yêu cầu hệ thống giảm bớt tài nguyên (-1 Pod)...');
+    sendControlCommand({ mode: 'MANUAL', action: 'SCALE_DOWN' });
+  }
+
+  function pauseAI() {
+    showToast('⏸ Đã tạm dừng AI — Chuyển sang điều phối THỦ CÔNG');
+    sendControlCommand({ mode: 'MANUAL' });
+  }
+
+  function activateHPA() {
+    showToast('🚀 Khởi động chế độ TỰ ĐỘNG tối ưu bằng mô hình AI');
+    sendControlCommand({ mode: 'AUTO' });
+  }
+
+  // ── Ngưỡng cấu hình & Toast ────────────────────────────────
+  function saveThresholds() {
+    const vals = {
+      cpu_warn: document.getElementById('th-cpu-warn').value,
+      cpu_crit: document.getElementById('th-cpu-crit').value,
+      ram_warn: document.getElementById('th-ram-warn').value,
+    };
+    fetch('/api/thresholds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vals)
+    }).then(() => showToast('✓ Đã đồng bộ cấu hình ngưỡng xuống Bộ điều phối'));
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      showToast('Đang mở phân hệ: ' + item.textContent.trim());
+    });
+  });
+
+  // Chạy cập nhật tự động mỗi 3 giây
+  setInterval(fetchSystemStatus, 3000);
+  fetchSystemStatus();
+</script>
+</body>
+</html>
