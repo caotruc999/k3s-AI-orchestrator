@@ -23,60 +23,43 @@ print(f"👉 Số dòng sau khi gộp file (Merge): {dataset.shape[0]}")
 
 # ==================== PHẦN SỬA ĐỔI CHÍNH ====================
 
-# 5. Chọn Feature (bỏ scaling_event vì sẽ tạo label mới)
+# 5. Chọn Feature
 selected_columns = [
     "cpu_usage", "memory_usage", "cpu_request", "cpu_limit", 
     "memory_request", "memory_limit", "network_bandwidth_usage", 
-    "network_latency", "disk_io", "pod_lifetime_seconds",
-    "cpu_allocation_efficiency"   # Thêm cột này để làm CPU dự báo
+    "network_latency", "disk_io", "pod_lifetime_seconds", "scaling_event"
 ]
 dataset = dataset[selected_columns]
 
-# 6. Làm sạch dữ liệu (Xóa trùng & Null cơ bản)
+# 6. Làm sạch
 dataset = dataset.drop_duplicates()
 dataset = dataset.dropna()
-print(f"👉 Số dòng sau khi xóa Trùng & Null (B6): {dataset.shape[0]}")
+print(f"👉 Số dòng sau khi xóa Trùng & Null: {dataset.shape[0]}")
 
-# ===================== TẠO LABEL MỚI =====================
-# Theo quy tắc bạn yêu cầu:
-# - Scale Up (2) : CPU dự báo > 75%
-# - Scale Down (0): CPU thực tế < 40% VÀ CPU dự báo < 50%
-# - Keep (1): Còn lại
+# ===================== LABEL MỚI =====================
+print("🔄 Đang tạo Label theo quy tắc mới...")
 
-print("🔄 Đang tạo Label theo quy tắc CPU Live & Predicted...")
-
-# Tính % utilization
-dataset['cpu_live_percent'] = (dataset['cpu_usage'] / dataset['cpu_limit']) * 100
-dataset['cpu_pred_percent'] = dataset['cpu_allocation_efficiency'] * 100   # Dùng efficiency làm predicted
+dataset['cpu_util'] = dataset['cpu_usage'] / dataset['cpu_limit']
+dataset['memory_util'] = dataset['memory_usage'] / dataset['memory_limit']
 
 def create_label(row):
-    live = row['cpu_live_percent']
-    pred = row['cpu_pred_percent']
-    
-    if pd.isna(live) or pd.isna(pred):
-        return 1  # Keep nếu dữ liệu thiếu
-    
-    # Scale Up
-    if pred > 75:
-        return 2
-    # Scale Down
-    elif live < 40 and pred < 50:
-        return 0
-    # Keep
-    else:
+    if not row['scaling_event']:        # False -> Keep
         return 1
+    if pd.isna(row['cpu_util']) or pd.isna(row['memory_util']):
+        return 1
+    if row['cpu_util'] >= 0.90 or row['memory_util'] >= 0.85:
+        return 2  # Scale Up
+    else:
+        return 0  # Scale Down
 
 dataset['label'] = dataset.apply(create_label, axis=1)
+dataset = dataset.drop(columns=['cpu_util', 'memory_util', 'scaling_event'])
 
-# Xóa các cột trung gian (không cần thiết cho training)
-dataset = dataset.drop(columns=['cpu_live_percent', 'cpu_pred_percent'])
-
-print(f"👉 Phân bố Label sau khi tạo:")
+print("👉 Phân bố Label:")
 print(dataset['label'].value_counts())
-print(dataset['label'].value_counts(normalize=True) * 100)
-
-# =========================================================
-
+print("\nTỷ lệ:")
+print(dataset['label'].value_counts(normalize=True)*100)
+# ====================================================
 # Định nghĩa feature columns (loại trừ label)
 feature_cols = [c for c in dataset.columns if c != "label"]
 
