@@ -1,0 +1,12 @@
+feature,role
+cpu_usage,Feature
+memory_usage,Feature
+cpu_request,Feature
+cpu_limit,Feature
+memory_request,Feature
+memory_limit,Feature
+network_bandwidth_usage,Feature
+network_latency,Feature
+disk_io,Feature
+pod_lifetime_seconds,Feature
+label,Target
