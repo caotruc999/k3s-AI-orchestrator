@@ -88,8 +88,7 @@ feature_dictionary = pd.DataFrame({
 })
 feature_dictionary.to_csv(os.path.join(OUTPUT_PATH, "feature_dictionary.csv"), index=False)
 
-# Phần vẽ biểu đồ và chuẩn hóa giữ nguyên (từ 12 đến 16)
-# ... (giữ nguyên code cũ từ Histogram đến StandardScaler)
+
 
 # 12. Histogram
 dataset.hist(figsize=(14, 10))
