@@ -21,8 +21,6 @@ resource_df = pd.read_csv(os.path.join(RAW_PATH, "kubernetes_resource_allocation
 dataset = performance_df.merge(resource_df, on=["pod_name", "namespace"], how="inner")
 print(f"👉 Số dòng sau khi gộp file (Merge): {dataset.shape[0]}")
 
-# ==================== PHẦN SỬA ĐỔI CHÍNH ====================
-
 # 5. Chọn Feature
 selected_columns = [
     "cpu_usage", "memory_usage", "cpu_request", "cpu_limit", 
@@ -36,7 +34,6 @@ dataset = dataset.drop_duplicates()
 dataset = dataset.dropna()
 print(f"👉 Số dòng sau khi xóa Trùng & Null: {dataset.shape[0]}")
 
-# ===================== LABEL MỚI =====================
 print("🔄 Đang tạo Label theo quy tắc mới...")
 
 dataset['cpu_util'] = dataset['cpu_usage'] / dataset['cpu_limit']
@@ -59,7 +56,6 @@ print("👉 Phân bố Label:")
 print(dataset['label'].value_counts())
 print("\nTỷ lệ:")
 print(dataset['label'].value_counts(normalize=True)*100)
-# ====================================================
 # Định nghĩa feature columns (loại trừ label)
 feature_cols = [c for c in dataset.columns if c != "label"]
 
