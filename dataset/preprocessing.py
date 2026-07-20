@@ -41,14 +41,14 @@ dataset['cpu_util'] = dataset['cpu_usage'] / dataset['cpu_limit']
 dataset['memory_util'] = dataset['memory_usage'] / dataset['memory_limit']
 
 def create_label(row):
-    if not row['scaling_event']:        # False -> Keep
-        return 1
-    if pd.isna(row['cpu_util']) or pd.isna(row['memory_util']):
-        return 1
-    if row['cpu_util'] >= 0.90 or row['memory_util'] >= 0.85:
-        return 2  # Scale Up
+    if row['cpu_util'] >= 0.80 or row['memory_util'] >= 0.80:
+        return 2
+    # Ưu tiên 2: Dư thừa tài nguyên -> Scale Down (0)
+    elif row['cpu_util'] <= 0.30 and row['memory_util'] <= 0.30:
+        return 0
+    # Còn lại: Giữ nguyên -> Keep (1)
     else:
-        return 0  # Scale Down
+        return 1
 
 dataset['label'] = dataset.apply(create_label, axis=1)
 dataset = dataset.drop(columns=['cpu_util', 'memory_util', 'scaling_event'])
