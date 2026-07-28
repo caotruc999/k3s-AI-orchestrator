@@ -1,11 +1,16 @@
+import os
 import joblib
 import pandas as pd
 
 from decision_policy import DecisionPolicy
 
-MODEL_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\models\linear_regression_model.pkl"
-INPUT_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\dataset\data\output\X_test.csv"
-OUTPUT_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\dataset\data\output\decision_results.csv"
+# Đường dẫn tương đối - lý do sửa giống predict_and_decide.py (xem comment ở đó).
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(THIS_DIR)
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "linear_regression_model.pkl")
+INPUT_PATH = os.path.join(BASE_DIR, "dataset", "data", "output", "X_test.csv")
+OUTPUT_PATH = os.path.join(BASE_DIR, "dataset", "data", "output", "decision_results.csv")
 
 
 def main():

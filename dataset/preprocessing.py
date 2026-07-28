@@ -8,8 +8,13 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
-RAW_PATH = "data/raw"
-OUTPUT_PATH = "data/output"
+# Đường dẫn tính theo VỊ TRÍ FILE này, không phụ thuộc thư mục đang đứng khi
+# gõ lệnh - chạy đúng dù gọi "python preprocessing.py" từ trong dataset/ hay
+# "python dataset/preprocessing.py" từ thư mục gốc dự án (giống cách
+# train_linear.py đã làm đúng, áp dụng nhất quán cho toàn bộ project).
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+RAW_PATH = os.path.join(THIS_DIR, "data", "raw")
+OUTPUT_PATH = os.path.join(THIS_DIR, "data", "output")
 VISUAL_PATH = os.path.join(OUTPUT_PATH, "visualization")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
