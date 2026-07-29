@@ -124,6 +124,19 @@
   /* ── TOAST ── */
   .toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:12px;color:var(--text);box-shadow:0 8px 24px #0008;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:999}
   .toast.show{opacity:1;transform:translateY(0)}
+
+  html {
+    scroll-behavior: smooth;
+  }
+  #section-dashboard,
+  #section-metrics,
+  #section-forecast,
+  #section-predict,
+  #section-thresholds,
+  #section-pods,
+  #section-history {
+    scroll-margin-top: 90px;
+  }
 </style>
 </head>
 <body>
@@ -154,30 +167,30 @@
   <!-- SIDEBAR -->
   <div class="sidebar">
     <div class="nav-section">Tổng quan</div>
-    <div class="nav-item active"><span class="nav-dot dot-blue"></span>Dashboard</div>
-    <div class="nav-item"><span class="nav-dot dot-muted"></span>Toàn bộ chi nhánh</div>
+    <div class="nav-item active" data-target="section-dashboard"><span class="nav-dot dot-blue"></span>Dashboard</div>
+    <div class="nav-item" data-target="section-dashboard"><span class="nav-dot dot-muted"></span>Toàn bộ chi nhánh</div>
 
     <div class="nav-section">Giám sát</div>
-    <div class="nav-item"><span class="nav-dot dot-green"></span>Metrics realtime</div>
-    <div class="nav-item"><span class="nav-dot dot-blue"></span>AI dự báo tải</div>
-    <div class="nav-item"><span class="nav-dot dot-warn"></span>Lịch sử cảnh báo</div>
+    <div class="nav-item" data-target="section-metrics"><span class="nav-dot dot-green"></span>Metrics realtime</div>
+    <div class="nav-item" data-target="section-forecast"><span class="nav-dot dot-blue"></span>AI dự báo tải</div>
+    <div class="nav-item" data-target="section-history"><span class="nav-dot dot-warn"></span>Lịch sử cảnh báo</div>
 
     <div class="nav-section">Điều phối</div>
-    <div class="nav-item"><span class="nav-dot dot-green"></span>Quản lý Pod</div>
-    <div class="nav-item"><span class="nav-dot dot-blue"></span>HPA / VPA</div>
-    <div class="nav-item"><span class="nav-dot dot-muted"></span>Can thiệp thủ công</div>
+    <div class="nav-item" data-target="section-pods"><span class="nav-dot dot-green"></span>Quản lý Pod</div>
+    <div class="nav-item" data-target="section-forecast"><span class="nav-dot dot-blue"></span>HPA / VPA</div>
+    <div class="nav-item" data-target="section-predict"><span class="nav-dot dot-muted"></span>Can thiệp thủ công</div>
 
     <div class="nav-section">Cài đặt</div>
-    <div class="nav-item"><span class="nav-dot dot-warn"></span>Ngưỡng cảnh báo</div>
-    <div class="nav-item"><span class="nav-dot dot-blue"></span>Retrain mô hình</div>
-    <div class="nav-item"><span class="nav-dot dot-muted"></span>Thông báo email</div>
+    <div class="nav-item" data-target="section-thresholds"><span class="nav-dot dot-warn"></span>Ngưỡng cảnh báo</div>
+    <div class="nav-item" data-target="section-predict"><span class="nav-dot dot-blue"></span>Retrain mô hình</div>
+    <div class="nav-item" data-target="section-history"><span class="nav-dot dot-muted"></span>Thông báo email</div>
   </div>
 
   <!-- MAIN CONTENT -->
   <div class="main">
 
     <!-- STAT CARDS -->
-    <div class="stat-row">
+    <div class="stat-row" id="section-dashboard">
       <div class="stat">
         <div class="stat-label">CPU trung bình</div>
         <div class="stat-val warn" id="stat-cpu">78%</div>
@@ -207,7 +220,7 @@
     </div>
 
     <!-- CHARTS ROW -->
-    <div class="grid2">
+    <div class="grid2" id="section-metrics">
       <div class="card">
         <div class="card-head">
           <div class="card-title">CPU theo thời gian thực</div>
@@ -274,7 +287,7 @@
     </div>
 
     <!-- AI FORECAST + THRESHOLD -->
-    <div class="grid3">
+    <div class="grid3" id="section-forecast">
       <div class="card">
         <div class="card-head">
           <div class="card-title">🤖 AI dự báo tải — 5 phút tới</div>
@@ -323,7 +336,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="section-thresholds">
         <div class="card-head">
           <div class="card-title">Ngưỡng cảnh báo</div>
           <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="saveThresholds()">Lưu</button>
@@ -355,7 +368,7 @@
         </div>
       </div>
     </div>
-    <div class="grid2" style="margin-top:18px">
+    <div class="grid2" id="section-predict" style="margin-top:18px">
       <div class="card">
         <div class="card-head">
           <div class="card-title">AI Predict trực tiếp</div>
@@ -418,7 +431,7 @@
     </div>
 
     <!-- POD TABLE + ALERT LOG -->
-    <div class="grid2">
+    <div class="grid2" id="section-pods">
       <div class="card">
         <div class="card-head">
           <div class="card-title">Danh sách Pod hiện tại</div>
@@ -465,7 +478,7 @@
         </table>
       </div>
 
-      <div class="card">
+      <div class="card" id="section-history">
         <div class="card-head">
           <div class="card-title">Lịch sử hoạt động</div>
           <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="showToast('Xem toàn bộ log')">Xem tất cả</button>
@@ -801,8 +814,36 @@ function bindEvents() {
   $("btn-fill-sample")?.addEventListener("click", fillSampleData);
 }
 
+function bindSidebarNavigation() {
+  const navItems = document.querySelectorAll(".nav-item[data-target]");
+
+  navItems.forEach(item => {
+    item.style.cursor = "pointer";
+
+    item.addEventListener("click", () => {
+      navItems.forEach(i => i.classList.remove("active"));
+      item.classList.add("active");
+
+      const targetId = item.getAttribute("data-target");
+      const targetEl = document.getElementById(targetId);
+
+      if (targetEl) {
+        targetEl.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      }
+
+      if (typeof showToast === "function") {
+        showToast("Đã chuyển tới: " + item.textContent.trim());
+      }
+    });
+  });
+}
+
 async function initDashboard() {
   bindEvents();
+  bindSidebarNavigation();
   await fetchStatus();
   setInterval(fetchStatus, 5000);
 }
