@@ -3,5 +3,10 @@ venv/
 __pycache__/
 *.pyc
 .env
+<<<<<<< Updated upstream
 .vscode/
 mail/config.json
+=======
+.vscode
+.venv/
+>>>>>>> Stashed changes

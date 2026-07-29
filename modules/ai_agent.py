@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 """
 modules/ai_agent.py
 ====================
@@ -155,3 +156,213 @@ def predict_future_load(cpu_history):
         int(last_val + random.randint(-5, 3)),
     ]
     return [max(0, min(100, val)) for val in predictions]
+=======
+import os
+import time
+from dataclasses import dataclass
+from flask import Flask, jsonify, request
+import onnxruntime as ort
+import numpy as np
+
+# ==========================================
+# 1. KHỞI TẠO FLASK APP & CẤU HÌNH AGENT
+# ==========================================
+app = Flask(__name__)
+
+
+@dataclass
+class AgentConfig:
+    min_replicas: int = 1
+    max_replicas: int = 5
+    scale_up_step: int = 1
+    scale_down_step: int = 1
+    cooldown_seconds: int = 30
+    mode: str = "AUTO"
+
+
+class AIAgent:
+    def __init__(self, config: AgentConfig | None = None):
+        self.config = config or AgentConfig()
+        self.current_replicas = self.config.min_replicas
+        self.last_scale_monotonic = None
+
+    def set_mode(self, mode: str):
+        mode = mode.upper()
+        if mode not in ["AUTO", "MANUAL"]:
+            raise ValueError("Mode phải là AUTO hoặc MANUAL")
+        self.config.mode = mode
+
+    def cooldown_active(self) -> bool:
+        if self.last_scale_monotonic is None:
+            return False
+        elapsed = time.monotonic() - self.last_scale_monotonic
+        return elapsed < self.config.cooldown_seconds
+
+    def apply_decision(self, decision: str) -> dict:
+        decision = decision.strip()
+
+        result = {
+            "mode": self.config.mode,
+            "decision": decision,
+            "current_replicas_before": self.current_replicas,
+            "action_taken": "None",
+            "current_replicas_after": self.current_replicas,
+            "reason": ""
+        }
+
+        if self.config.mode == "MANUAL":
+            result["reason"] = "Hệ thống đang ở chế độ MANUAL, AI không tự scale."
+            return result
+
+        if decision == "Keep":
+            result["action_taken"] = "Keep"
+            result["reason"] = "Hệ thống giữ nguyên số replica."
+            result["current_replicas_after"] = self.current_replicas
+            return result
+
+        if self.cooldown_active():
+            result["reason"] = "Đang trong thời gian cooldown, tạm thời không scale."
+            return result
+
+        if decision == "Scale Up":
+            if self.current_replicas < self.config.max_replicas:
+                self.current_replicas += self.config.scale_up_step
+                if self.current_replicas > self.config.max_replicas:
+                    self.current_replicas = self.config.max_replicas
+                self.last_scale_monotonic = time.monotonic()
+                result["action_taken"] = "Scaled Up"
+                result["reason"] = "AI quyết định tăng tài nguyên."
+            else:
+                result["reason"] = "Đã chạm max_replicas, không thể scale up thêm."
+
+        elif decision == "Scale Down":
+            if self.current_replicas > self.config.min_replicas:
+                self.current_replicas -= self.config.scale_down_step
+                if self.current_replicas < self.config.min_replicas:
+                    self.current_replicas = self.config.min_replicas
+                self.last_scale_monotonic = time.monotonic()
+                result["action_taken"] = "Scaled Down"
+                result["reason"] = "AI quyết định giảm tài nguyên."
+            else:
+                result["reason"] = "Đã chạm min_replicas, không thể scale down thêm."
+
+        else:
+            result["reason"] = f"Decision không hợp lệ: {decision}"
+
+        result["current_replicas_after"] = self.current_replicas
+        return result
+
+    def manual_scale(self, action: str) -> dict:
+        action = action.strip()
+
+        result = {
+            "mode": self.config.mode,
+            "action_requested": action,
+            "current_replicas_before": self.current_replicas,
+            "action_taken": "None",
+            "current_replicas_after": self.current_replicas,
+            "reason": ""
+        }
+
+        if self.config.mode != "MANUAL":
+            result["reason"] = "Chỉ được manual scale khi hệ thống đang ở chế độ MANUAL."
+            return result
+
+        if action == "Scale Up":
+            if self.current_replicas < self.config.max_replicas:
+                self.current_replicas += self.config.scale_up_step
+                if self.current_replicas > self.config.max_replicas:
+                    self.current_replicas = self.config.max_replicas
+                self.last_scale_monotonic = time.monotonic()
+                result["action_taken"] = "Manual Scaled Up"
+                result["reason"] = "Quản trị viên tăng tài nguyên thủ công."
+            else:
+                result["reason"] = "Đã chạm max_replicas, không thể scale up thêm."
+
+        elif action == "Scale Down":
+            if self.current_replicas > self.config.min_replicas:
+                self.current_replicas -= self.config.scale_down_step
+                if self.current_replicas < self.config.min_replicas:
+                    self.current_replicas = self.config.min_replicas
+                self.last_scale_monotonic = time.monotonic()
+                result["action_taken"] = "Manual Scaled Down"
+                result["reason"] = "Quản trị viên giảm tài nguyên thủ công."
+            else:
+                result["reason"] = "Đã chạm min_replicas, không thể scale down thêm."
+
+        elif action == "Keep":
+            result["action_taken"] = "Keep"
+            result["reason"] = "Quản trị viên giữ nguyên số replica."
+
+        else:
+            result["reason"] = f"Action không hợp lệ: {action}"
+
+        result["current_replicas_after"] = self.current_replicas
+        return result
+
+
+# Khởi tạo AI Agent
+agent = AIAgent(AgentConfig(cooldown_seconds=30))
+
+
+# ==========================================
+# 2. FLASK API ENDPOINTS
+# ==========================================
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    return jsonify({
+        "mode": agent.config.mode,
+        "current_replicas": agent.current_replicas,
+        "min_replicas": agent.config.min_replicas,
+        "max_replicas": agent.config.max_replicas,
+        "cooldown_seconds": agent.config.cooldown_seconds
+    }), 200
+
+
+@app.route('/mode', methods=['POST'])
+def change_mode():
+    data = request.get_json() or {}
+    new_mode = data.get('mode', '')
+    try:
+        agent.set_mode(new_mode)
+        return jsonify({
+            "message": "Chuyển mode thành công.",
+            "mode": agent.config.mode
+        }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/manual-scale', methods=['POST'])
+def manual_scale():
+    data = request.get_json() or {}
+    # Lấy action từ body (chấp nhận cả key 'action' hoặc 'decision')
+    decision = data.get('action') or data.get('decision') or ''
+    
+    # Gọi hàm manual_scale chuyên dụng thay cho apply_decision
+    result = agent.manual_scale(decision)
+    return jsonify(result), 200
+
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json() or {}
+    features = data.get('features', [])
+
+    if len(features) != 10:
+        return jsonify({"error": "Đầu vào yêu cầu đúng 10 features"}), 400
+    decision = "Scale Up" if features[0] > 80 else "Keep"
+
+    agent_result = agent.apply_decision(decision)
+    
+    return jsonify({
+        "input_features": features,
+        "ai_decision": decision,
+        "agent_execution": agent_result
+    }), 200
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+>>>>>>> Stashed changes

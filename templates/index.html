@@ -192,9 +192,11 @@
       </div>
       <div class="stat">
         <div class="stat-label">Tổng Pod đang chạy</div>
-        <div class="stat-val" id="stat-pods">24</div>
-        <div class="stat-sub up">↑ 3 pod vừa scale up</div>
-        <span class="stat-badge badge-blue">AI điều phối</span>
+        <div class="stat-val" id="stat-pods">1</div>
+        <div class="stat-sub up">
+          Mode: <span id="system-mode">AUTO</span> · Min <span id="min-replicas">1</span> · Max <span id="max-replicas">5</span>
+        </div>
+        <span class="stat-badge badge-blue" id="cooldown-seconds">30s</span>
       </div>
       <div class="stat">
         <div class="stat-label">Độ chính xác AI (24h)</div>
@@ -313,11 +315,11 @@
         <div style="margin-top:14px;padding:10px;background:#EF444410;border:1px solid #EF444430;border-radius:8px;font-size:12px;color:#EF4444">
           ⚠ AI dự báo tải vượt 85% trong 3–5 phút tới. Đã tự động scale up 3 pod.
         </div>
-        <div class="action-row">
-          <button class="btn-success" onclick="scaleUp()">✚ Scale UP thủ công</button>
-          <button class="btn-danger"  onclick="scaleDown()">✕ Scale DOWN</button>
-          <button class="btn-warn2"   onclick="pauseAI()">⏸ Tạm dừng AI</button>
-          <button class="btn-purple"  onclick="activateHPA()">↺ Kích hoạt AI Scale</button>
+        <div class="action-row" id="manual-control-panel">
+          <button class="btn-success" id="btn-scale-up" type="button">✚ Scale UP thủ công</button>
+          <button class="btn-danger" id="btn-scale-down" type="button">✕ Scale DOWN</button>
+          <button class="btn-warn2" id="btn-manual" type="button">⏸ Chuyển MANUAL</button>
+          <button class="btn-purple" id="btn-auto" type="button">↺ Kích hoạt AI Scale</button>
         </div>
       </div>
 
@@ -353,13 +355,74 @@
         </div>
       </div>
     </div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">AI Predict trực tiếp</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" id="btn-fill-sample" type="button">Nạp sample</button>
+            <button class="btn btn-primary" id="btn-predict" type="button">Predict</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+          <input class="thresh-input" id="cpu_usage" type="number" step="any" placeholder="cpu_usage">
+          <input class="thresh-input" id="memory_usage" type="number" step="any" placeholder="memory_usage">
+          <input class="thresh-input" id="cpu_request" type="number" step="any" placeholder="cpu_request">
+          <input class="thresh-input" id="cpu_limit" type="number" step="any" placeholder="cpu_limit">
+          <input class="thresh-input" id="memory_request" type="number" step="any" placeholder="memory_request">
+          <input class="thresh-input" id="memory_limit" type="number" step="any" placeholder="memory_limit">
+          <input class="thresh-input" id="network_bandwidth_usage" type="number" step="any" placeholder="network_bandwidth_usage">
+          <input class="thresh-input" id="network_latency" type="number" step="any" placeholder="network_latency">
+          <input class="thresh-input" id="disk_io" type="number" step="any" placeholder="disk_io">
+          <input class="thresh-input" id="pod_lifetime_seconds" type="number" step="any" placeholder="pod_lifetime_seconds">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Kết quả suy luận AI</div>
+          <button class="btn btn-ghost" id="btn-keep" type="button">Keep</button>
+        </div>
+
+        <div class="thresh-row">
+          <div class="thresh-label">Predicted score</div>
+          <div class="stat-val up" id="result-predicted-score">-</div>
+        </div>
+
+        <div class="thresh-row">
+          <div class="thresh-label">Scaling decision</div>
+          <span class="stat-badge badge-blue" id="result-scaling-decision">-</span>
+        </div>
+
+        <div class="thresh-row">
+          <div class="thresh-label">Action taken</div>
+          <div id="result-action-taken">-</div>
+        </div>
+
+        <div class="thresh-row">
+          <div class="thresh-label">Mode</div>
+          <div id="result-mode">-</div>
+        </div>
+
+        <div class="thresh-row">
+          <div class="thresh-label">Replicas</div>
+          <div id="result-replicas">-</div>
+        </div>
+
+        <div class="thresh-row" style="align-items:flex-start">
+          <div class="thresh-label">Reason</div>
+          <div id="result-reason" style="max-width:260px;text-align:right;color:var(--muted)">-</div>
+        </div>
+      </div>
+    </div>
 
     <!-- POD TABLE + ALERT LOG -->
     <div class="grid2">
       <div class="card">
         <div class="card-head">
           <div class="card-title">Danh sách Pod hiện tại</div>
-          <span class="card-badge badge-blue" id="pod-count-badge">24 pods</span>
+          <span class="card-badge badge-blue" id="pod-count-badge">1 pod</span>
         </div>
         <table>
           <thead>
@@ -407,34 +470,41 @@
           <div class="card-title">Lịch sử hoạt động</div>
           <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="showToast('Xem toàn bộ log')">Xem tất cả</button>
         </div>
-        <div class="alert-item">
-          <div class="alert-icon" style="background:#EF444420;color:#EF4444">⚠</div>
-          <div>
-            <div class="alert-msg">CPU vượt ngưỡng 75% tại node-02</div>
-            <div class="alert-time">14:32:07 — Email đã gửi tới admin@hospital.vn</div>
+
+        <div id="activity-log">
+          <div class="alert-item">
+            <div class="alert-icon" style="background:#EF444420;color:#EF4444">⚠</div>
+            <div>
+              <div class="alert-msg">CPU vượt ngưỡng 75% tại node-02</div>
+              <div class="alert-time">14:32:07 — Email đã gửi tới admin@hospital.vn</div>
+            </div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background:#10B98120;color:#10B981">↑</div>
+            <div>
+              <div class="alert-msg">AI kích hoạt scale UP: +3 pod (worker-3c4, 3c5, 3c6)</div>
+              <div class="alert-time">14:31:52 — AI dự báo tải 89% trong 3 phút</div>
+            </div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background:#8B5CF620;color:#8B5CF6">⟳</div>
+            <div>
+              <div class="alert-msg">Retrain hoàn tất — Độ chính xác tăng 94.2%</div>
+              <div class="alert-time">13:00:00 — 1,240 mẫu dữ liệu mới</div>
+            </div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background:#3B82F620;color:#3B82F6">↓</div>
+            <div>
+              <div class="alert-msg">AI kích hoạt scale DOWN: -2 pod</div>
+              <div class="alert-time">11:15:30 — Tải giảm xuống 35% sau giờ cao điểm</div>
+            </div>
           </div>
         </div>
-        <div class="alert-item">
-          <div class="alert-icon" style="background:#10B98120;color:#10B981">↑</div>
-          <div>
-            <div class="alert-msg">AI kích hoạt scale UP: +3 pod (worker-3c4, 3c5, 3c6)</div>
-            <div class="alert-time">14:31:52 — AI dự báo tải 89% trong 3 phút</div>
-          </div>
-        </div>
-        <div class="alert-item">
-          <div class="alert-icon" style="background:#8B5CF620;color:#8B5CF6">⟳</div>
-          <div>
-            <div class="alert-msg">Retrain hoàn tất — Độ chính xác tăng 94.2%</div>
-            <div class="alert-time">13:00:00 — 1,240 mẫu dữ liệu mới</div>
-          </div>
-        </div>
-        <div class="alert-item">
-          <div class="alert-icon" style="background:#3B82F620;color:#3B82F6">↓</div>
-          <div>
-            <div class="alert-msg">AI kích hoạt scale DOWN: -2 pod</div>
-            <div class="alert-time">11:15:30 — Tải giảm xuống 35% sau giờ cao điểm</div>
-          </div>
-        </div>
+      </div>
       </div>
     </div>
 
@@ -442,136 +512,302 @@
 </div><!-- end .layout -->
 
 <script>
-  // ── Cấu hình đồ thị SVG động ──────────────────────────────
-  const MAX_POINTS = 10;
-  let cpuDataHistory = [60, 65, 70, 68, 72, 75, 74, 76, 78]; 
-  let ramDataHistory = [58, 59, 60, 60, 61, 62, 61, 60, 61];
-  const xCoords = [22, 58, 94, 130, 166, 202, 238, 274, 310, 346];
+const API = {
+  status: "/status",
+  mode: "/mode",
+  manualScale: "/manual-scale",
+  predict: "/predict"
+};
 
-  function redrawSVGChart(polylineId, pathId, dataHistory) {
-    const polyline = document.getElementById(polylineId);
-    const path = document.getElementById(pathId);
-    if (!polyline || !path) return;
+const FEATURE_FIELDS = [
+  "cpu_usage",
+  "memory_usage",
+  "cpu_request",
+  "cpu_limit",
+  "memory_request",
+  "memory_limit",
+  "network_bandwidth_usage",
+  "network_latency",
+  "disk_io",
+  "pod_lifetime_seconds"
+];
 
-    let points = [];
-    dataHistory.forEach((val, index) => {
-      let x = xCoords[index] || 346;
-      let y = 80 - ((val / 100) * 60); // Ánh xạ 0-100% vào khoảng Y từ 20 đến 80 trên khung SVG
-      if (y < 20) y = 20;
-      if (y > 80) y = 80;
-      points.push(`${x},${y}`);
-    });
+function $(id) {
+  return document.getElementById(id);
+}
 
-    polyline.setAttribute('points', points.join(' '));
+function setText(id, value) {
+  const el = $(id);
+  if (el) el.textContent = value;
+}
 
-    if (points.length > 0) {
-      let firstX = xCoords[0];
-      let lastX = xCoords[points.length - 1];
-      let fillString = `M${firstX},80 L` + points.join(' L') + ` L${lastX},80 Z`;
-      path.setAttribute('d', fillString);
+function appendLog(message, type = "info") {
+  const logBox = $("activity-log");
+  if (!logBox) return;
+
+  const item = document.createElement("div");
+  item.className = "alert-item";
+
+  const iconMap = {
+    error: { icon: "⚠", bg: "#EF444420", color: "#EF4444" },
+    success: { icon: "✓", bg: "#10B98120", color: "#10B981" },
+    info: { icon: "ℹ", bg: "#3B82F620", color: "#3B82F6" }
+  };
+
+  const iconCfg = iconMap[type] || iconMap.info;
+  const now = new Date().toLocaleTimeString("vi-VN");
+
+  item.innerHTML = `
+    <div class="alert-icon" style="background:${iconCfg.bg};color:${iconCfg.color}">
+      ${iconCfg.icon}
+    </div>
+    <div>
+      <div class="alert-msg">${message}</div>
+      <div class="alert-time">${now} — Dashboard AI</div>
+    </div>
+  `;
+
+  logBox.prepend(item);
+}
+
+function updateModeBadge(mode) {
+  setText("system-mode", mode || "-");
+
+  const autoBtn = $("btn-auto");
+  const manualBtn = $("btn-manual");
+  const scaleUpBtn = $("btn-scale-up");
+  const scaleDownBtn = $("btn-scale-down");
+  const keepBtn = $("btn-keep");
+
+  if (autoBtn) autoBtn.classList.toggle("active", mode === "AUTO");
+  if (manualBtn) manualBtn.classList.toggle("active", mode === "MANUAL");
+
+  const isManual = mode === "MANUAL";
+
+  if (scaleUpBtn) {
+    scaleUpBtn.disabled = !isManual;
+    scaleUpBtn.style.opacity = isManual ? "1" : "0.5";
+    scaleUpBtn.style.pointerEvents = isManual ? "auto" : "none";
+  }
+
+  if (scaleDownBtn) {
+    scaleDownBtn.disabled = !isManual;
+    scaleDownBtn.style.opacity = isManual ? "1" : "0.5";
+    scaleDownBtn.style.pointerEvents = isManual ? "auto" : "none";
+  }
+
+  if (keepBtn) {
+    keepBtn.disabled = !isManual;
+    keepBtn.style.opacity = isManual ? "1" : "0.5";
+    keepBtn.style.pointerEvents = isManual ? "auto" : "none";
+  }
+
+  const badge = $("alert-badge");
+  if (badge) {
+    badge.textContent = isManual ? "✋ THỦ CÔNG" : "⚠ TỰ ĐỘNG";
+  }
+}
+
+function showResult(data) {
+  setText("result-predicted-score", data.predicted_score ?? "-");
+  setText("result-scaling-decision", data.scaling_decision ?? "-");
+  setText("result-action-taken", data.action_taken ?? "-");
+  setText("result-mode", data.mode ?? "-");
+  setText("result-replicas", `${data.replicas_before ?? "-"} → ${data.replicas_after ?? "-"}`);
+  setText("result-reason", data.reason ?? "-");
+}
+
+function saveThresholds() {
+  const cpuWarn = $("th-cpu-warn")?.value;
+  const cpuCrit = $("th-cpu-crit")?.value;
+  const ramWarn = $("th-ram-warn")?.value;
+  const scaleDown = $("th-scale-down")?.value;
+  const hpa = $("th-hpa")?.value;
+
+  appendLog(
+    `Đã lưu ngưỡng giao diện: CPU warn ${cpuWarn}%, CPU crit ${cpuCrit}%, RAM warn ${ramWarn}%, Scale down ${scaleDown}%, HPA ${hpa}%`,
+    "info"
+  );
+
+  if (typeof showToast === "function") {
+    showToast("Đã lưu ngưỡng cảnh báo trên giao diện");
+  }
+}
+
+function showToast(message) {
+  const toast = $("toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("show");
+  setTimeout(() => {
+    toast.classList.remove("show");
+  }, 3000);
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch(API.status);
+    const data = await res.json();
+
+    if (!res.ok) {
+      appendLog(`Không lấy được status: ${data.error || "Unknown error"}`, "error");
+      return;
     }
+
+    setText("stat-pods", data.current_replicas);
+    setText("pod-count-badge", `${data.current_replicas} pod${data.current_replicas > 1 ? "s" : ""}`);
+    setText("min-replicas", data.min_replicas);
+    setText("max-replicas", data.max_replicas);
+    setText("cooldown-seconds", `${data.cooldown_seconds}s`);
+
+    updateModeBadge(data.mode);
+
+  } catch (err) {
+    appendLog(`Lỗi status: ${err.message}`, "error");
   }
+}
 
-  // ── Giao tiếp Fetch API thời gian thực ──────────────────────
-  function fetchSystemStatus() {
-    fetch('/api/status')
-      .then(res => res.json())
-      .then(data => {
-        // Cập nhật thẻ trạng thái chữ
-        document.getElementById('stat-cpu').textContent = data.current_cpu + '%';
-        document.getElementById('stat-ram').textContent = data.current_ram + '%';
-        document.getElementById('stat-pods').textContent = data.current_replicas;
-        document.getElementById('pod-count-badge').textContent = data.current_replicas + ' pods';
-        document.getElementById('cpu-current-badge').textContent = data.current_cpu + '% hiện tại';
-        document.getElementById('ram-current-badge').textContent = data.current_ram + '% hiện tại';
-        
-        // Cập nhật nhãn chế độ vận hành trên Topbar
-        const alertBadge = document.getElementById('alert-badge');
-        if(data.mode === "AUTO") {
-          alertBadge.className = "tag tag-live";
-          alertBadge.textContent = "● AI VẬN HÀNH";
-        } else {
-          alertBadge.className = "tag tag-warn";
-          alertBadge.textContent = "⚠ THỦ CÔNG";
-        }
-
-        // Đẩy dữ liệu vào mảng lịch sử đồ thị
-        cpuDataHistory.push(data.current_cpu);
-        ramDataHistory.push(data.current_ram);
-        if (cpuDataHistory.length > MAX_POINTS) cpuDataHistory.shift();
-        if (ramDataHistory.length > MAX_POINTS) ramDataHistory.shift();
-
-        // Vẽ lại đồ thị SVG
-        redrawSVGChart('cpu-polyline', 'cpu-path', cpuDataHistory);
-        redrawSVGChart('ram-polyline', 'ram-path', ramDataHistory);
-      })
-      .catch(err => console.log("⚠️ Đang đợi kết nối tới Server Backend..."));
-  }
-
-  function sendControlCommand(payload) {
-    fetch('/api/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(() => fetchSystemStatus());
-  }
-
-  function scaleUp() {
-    showToast('✚ Đã yêu cầu hệ thống tăng tài nguyên (+2 Pod)...');
-    sendControlCommand({ mode: 'MANUAL', action: 'SCALE_UP' });
-  }
-
-  function scaleDown() {
-    showToast('✕ Đã yêu cầu hệ thống giảm bớt tài nguyên (-1 Pod)...');
-    sendControlCommand({ mode: 'MANUAL', action: 'SCALE_DOWN' });
-  }
-
-  function pauseAI() {
-    showToast('⏸ Đã tạm dừng AI — Chuyển sang điều phối THỦ CÔNG');
-    sendControlCommand({ mode: 'MANUAL' });
-  }
-
-  function activateHPA() {
-    showToast('🚀 Khởi động chế độ TỰ ĐỘNG tối ưu bằng mô hình AI');
-    sendControlCommand({ mode: 'AUTO' });
-  }
-
-  // ── Ngưỡng cấu hình & Toast ────────────────────────────────
-  function saveThresholds() {
-    const vals = {
-      cpu_warn: document.getElementById('th-cpu-warn').value,
-      cpu_crit: document.getElementById('th-cpu-crit').value,
-      ram_warn: document.getElementById('th-ram-warn').value,
-    };
-    fetch('/api/thresholds', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(vals)
-    }).then(() => showToast('✓ Đã đồng bộ cấu hình ngưỡng xuống Bộ điều phối'));
-  }
-
-  let toastTimer;
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
-  }
-
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-      item.classList.add('active');
-      showToast('Đang mở phân hệ: ' + item.textContent.trim());
+async function changeMode(mode) {
+  try {
+    const res = await fetch(API.mode, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode })
     });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      appendLog(`Chuyển mode thất bại: ${data.error || "Unknown error"}`, "error");
+      return;
+    }
+
+    updateModeBadge(data.mode);
+    appendLog(`Đã chuyển mode sang ${data.mode}`, "success");
+    await fetchStatus();
+
+  } catch (err) {
+    appendLog(`Lỗi đổi mode: ${err.message}`, "error");
+  }
+}
+
+async function manualScale(action) {
+  try {
+    const res = await fetch(API.manualScale, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      appendLog(`Manual scale lỗi: ${data.error || "Unknown error"}`, "error");
+      return;
+    }
+
+    setText("result-predicted-score", "-");
+    setText("result-scaling-decision", "Manual");
+    setText("result-action-taken", data.action_taken ?? "-");
+    setText("result-mode", data.mode ?? "-");
+    setText("result-replicas", `${data.replicas_before ?? "-"} → ${data.replicas_after ?? "-"}`);
+    setText("result-reason", data.reason ?? "-");
+
+    appendLog(`Manual scale ${action}: ${data.replicas_before} → ${data.replicas_after}`, "success");
+    await fetchStatus();
+
+  } catch (err) {
+    appendLog(`Lỗi manual scale: ${err.message}`, "error");
+  }
+}
+
+function collectFeaturePayload() {
+  const payload = {};
+
+  for (const field of FEATURE_FIELDS) {
+    const input = $(field);
+    if (!input) {
+      throw new Error(`Thiếu input: ${field}`);
+    }
+
+    const value = parseFloat(input.value);
+    if (Number.isNaN(value)) {
+      throw new Error(`Giá trị không hợp lệ: ${field}`);
+    }
+
+    payload[field] = value;
+  }
+
+  return payload;
+}
+
+async function runPredict() {
+  try {
+    const payload = collectFeaturePayload();
+
+    const res = await fetch(API.predict, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      appendLog(`Predict lỗi: ${data.error || "Unknown error"}`, "error");
+      return;
+    }
+
+    showResult(data);
+    appendLog(`AI dự đoán ${data.predicted_score} → ${data.scaling_decision} | ${data.action_taken}`, "success");
+    await fetchStatus();
+
+  } catch (err) {
+    appendLog(`Lỗi predict: ${err.message}`, "error");
+  }
+}
+
+function fillSampleData() {
+  const sample = {
+    cpu_usage: -1.6235199138520664,
+    memory_usage: 0.3783857583219464,
+    cpu_request: 1.7099695967416793,
+    cpu_limit: 0.2845814209737278,
+    memory_request: 1.3071642028562207,
+    memory_limit: -0.9124124409654414,
+    network_bandwidth_usage: -1.1834102498955394,
+    network_latency: -0.7337604042270234,
+    disk_io: 0.9223777591382988,
+    pod_lifetime_seconds: -1.0426472851540949
+  };
+
+  Object.entries(sample).forEach(([key, value]) => {
+    const el = $(key);
+    if (el) el.value = value;
   });
 
-  // Chạy cập nhật tự động mỗi 3 giây
-  setInterval(fetchSystemStatus, 3000);
-  fetchSystemStatus();
+  appendLog("Đã nạp sample X_test vào form", "info");
+}
+
+function bindEvents() {
+  $("btn-auto")?.addEventListener("click", () => changeMode("AUTO"));
+  $("btn-manual")?.addEventListener("click", () => changeMode("MANUAL"));
+
+  $("btn-scale-up")?.addEventListener("click", () => manualScale("Scale Up"));
+  $("btn-keep")?.addEventListener("click", () => manualScale("Keep"));
+  $("btn-scale-down")?.addEventListener("click", () => manualScale("Scale Down"));
+
+  $("btn-predict")?.addEventListener("click", runPredict);
+  $("btn-fill-sample")?.addEventListener("click", fillSampleData);
+}
+
+async function initDashboard() {
+  bindEvents();
+  await fetchStatus();
+  setInterval(fetchStatus, 5000);
+}
+
+document.addEventListener("DOMContentLoaded", initDashboard);
 </script>
 </body>
 </html>
