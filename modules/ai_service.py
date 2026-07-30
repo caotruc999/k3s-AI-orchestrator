@@ -1,6 +1,8 @@
 import os
 import sys
-from flask import Flask, request, jsonify, render_template
+import time
+import psutil
+from flask import Flask, request, jsonify
 import numpy as np
 import onnxruntime as ort
 
@@ -10,9 +12,14 @@ BASE_DIR = os.path.dirname(MODULES_DIR)
 if MODULES_DIR not in sys.path:
     sys.path.append(MODULES_DIR)
 
+EMAIL_DIR = os.path.join(BASE_DIR, "notification", "email")
+if EMAIL_DIR not in sys.path:
+    sys.path.append(EMAIL_DIR)
+
 from decision_policy import DecisionPolicy
 from ai_agent import AIAgent, AgentConfig
 from k3s_client import K3sClientMock, K3sResourceState
+from send_mail import send_alert_email, build_alert_message
 
 app = Flask(
     __name__,
@@ -151,6 +158,48 @@ def manual_scale():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route("/reset-state", methods=["POST"])
+def reset_state():
+    try:
+        # Reset K3s mock state về ban đầu
+        k3s_client.state.current_replicas = k3s_client.state.min_replicas
+
+        # Reset AI agent state
+        agent.current_replicas = agent.config.min_replicas
+        agent.last_scale_monotonic = None
+
+        # Đồng bộ lại agent theo K3s
+        sync_agent_with_k3s()
+
+        return jsonify({
+            "message": "Đã reset state hệ thống.",
+            "mode": agent.config.mode,
+            "current_replicas": agent.current_replicas,
+            "cooldown_active": False
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/test-email", methods=["POST"])
+def test_email():
+    try:
+        subject, message = build_alert_message(
+            current_cpu=78,
+            predicted_cpu=92,
+            threshold=80
+        )
+        email_sent = send_alert_email(subject, message)
+
+        return jsonify({
+            "message": "Đã thử gửi email cảnh báo.",
+            "email_sent": email_sent
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 400
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -173,7 +222,22 @@ def predict():
         sync_agent_with_k3s()
 
         agent_result = agent.apply_decision(scaling_decision)
+        email_sent = False
+        try:
+            if scaling_decision == "Scale Up" or agent_result["action_taken"] == "Scaled Up":
+                current_cpu = round(float(features[0]), 2)
+                predicted_cpu = round(min(float(predicted_score) / 1.5 * 100, 100), 2)
+                threshold = 80.0
 
+                subject, message = build_alert_message(
+                    current_cpu=current_cpu,
+                    predicted_cpu=predicted_cpu,
+                    threshold=threshold
+                )
+                email_sent = send_alert_email(subject, message)
+        except Exception as mail_err:
+            print(f"[Mail Warning] Không gửi được email: {mail_err}")
+        
         # 3. Map quyết định sang thực thi thật/mock trên K3s Cluster
         if agent_result["action_taken"] == "Scaled Up":
             execution_result = k3s_client.scale_up()
@@ -185,16 +249,29 @@ def predict():
         # Cập nhật lại replica state sau khi cluster đã scale
         sync_agent_with_k3s()
 
+        psutil.cpu_percent(interval=None)
+
+
+        def get_current_system_metrics() -> dict:
+            cpu_percent = psutil.cpu_percent(interval=0.3)
+            memory = psutil.virtual_memory()
+
+            return {
+                "cpu_percent": round(cpu_percent, 2),
+                "memory_percent": round(memory.percent, 2),
+                "memory_used_mb": round(memory.used / 1024 / 1024, 2),
+                "memory_total_mb": round(memory.total / 1024 / 1024, 2),
+                "timestamp": int(time.time())
+            }
         return jsonify({
             "predicted_score": round(float(predicted_score), 6),
             "scaling_decision": scaling_decision,
             "mode": agent_result["mode"],
+            "replicas_before": agent_result["current_replicas_before"],
+            "replicas_after": agent_result["current_replicas_after"],
             "action_taken": agent_result["action_taken"],
             "reason": agent_result["reason"],
-            "replicas_before": execution_result["replicas_before"],
-            "replicas_after": execution_result["replicas_after"],
-            "execution_action": execution_result["action"],
-            "changed": execution_result["changed"]
+            "email_sent": email_sent
         })
 
     except Exception as e:

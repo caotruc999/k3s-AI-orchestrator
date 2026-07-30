@@ -125,6 +125,28 @@
   .toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:12px;color:var(--text);box-shadow:0 8px 24px #0008;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:999}
   .toast.show{opacity:1;transform:translateY(0)}
 
+  .predict-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    gap: 14px 18px;
+  }
+
+  .predict-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .predict-field label {
+    font-size: 13px;
+    color: #9fb0d0;
+    font-weight: 600;
+  }
+
+  .predict-field input {
+    width: 100%;
+  }
+
   html {
     scroll-behavior: smooth;
   }
@@ -333,6 +355,9 @@
           <button class="btn-danger" id="btn-scale-down" type="button">✕ Scale DOWN</button>
           <button class="btn-warn2" id="btn-manual" type="button">⏸ Chuyển MANUAL</button>
           <button class="btn-purple" id="btn-auto" type="button">↺ Kích hoạt AI Scale</button>
+          <button id="resetStateBtn" class="btn btn-secondary">
+            ↺ Reset State
+          </button>
         </div>
       </div>
 
@@ -379,16 +404,57 @@
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-          <input class="thresh-input" id="cpu_usage" type="number" step="any" placeholder="cpu_usage">
-          <input class="thresh-input" id="memory_usage" type="number" step="any" placeholder="memory_usage">
-          <input class="thresh-input" id="cpu_request" type="number" step="any" placeholder="cpu_request">
-          <input class="thresh-input" id="cpu_limit" type="number" step="any" placeholder="cpu_limit">
-          <input class="thresh-input" id="memory_request" type="number" step="any" placeholder="memory_request">
-          <input class="thresh-input" id="memory_limit" type="number" step="any" placeholder="memory_limit">
-          <input class="thresh-input" id="network_bandwidth_usage" type="number" step="any" placeholder="network_bandwidth_usage">
-          <input class="thresh-input" id="network_latency" type="number" step="any" placeholder="network_latency">
-          <input class="thresh-input" id="disk_io" type="number" step="any" placeholder="disk_io">
-          <input class="thresh-input" id="pod_lifetime_seconds" type="number" step="any" placeholder="pod_lifetime_seconds">
+          <div class="predict-grid">
+            <div class="predict-field">
+              <label for="cpu_usage">CPU Usage</label>
+              <input id="cpu_usage" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="memory_usage">Memory Usage</label>
+              <input id="memory_usage" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="cpu_request">CPU Request</label>
+              <input id="cpu_request" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="cpu_limit">CPU Limit</label>
+              <input id="cpu_limit" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="memory_request">Memory Request</label>
+              <input id="memory_request" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="memory_limit">Memory Limit</label>
+              <input id="memory_limit" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="network_bandwidth_usage">Network Bandwidth</label>
+              <input id="network_bandwidth_usage" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="network_latency">Network Latency</label>
+              <input id="network_latency" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="disk_io">Disk I/O</label>
+              <input id="disk_io" type="number" step="any" />
+            </div>
+
+            <div class="predict-field">
+              <label for="pod_lifetime_seconds">Pod Lifetime</label>
+              <input id="pod_lifetime_seconds" type="number" step="any" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -620,6 +686,35 @@ function updateModeBadge(mode) {
     badge.textContent = isManual ? "✋ THỦ CÔNG" : "⚠ TỰ ĐỘNG";
   }
 }
+
+document.getElementById("resetStateBtn")?.addEventListener("click", async () => {
+    try {
+      const response = await fetch("/reset-state", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Reset state thất bại.");
+        return;
+      }
+
+      alert("Đã reset state và cooldown thành công.");
+
+      // Nếu có hàm loadStatus hoặc refreshDashboard thì gọi lại
+      if (typeof loadStatus === "function") {
+        loadStatus();
+      }
+
+    } catch (error) {
+      alert("Không thể kết nối tới API reset-state.");
+      console.error(error);
+    }
+  });
 
 function showResult(data) {
   setText("result-predicted-score", data.predicted_score ?? "-");

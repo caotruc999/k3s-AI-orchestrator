@@ -1,16 +1,16 @@
 import smtplib
-import json
 import os
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
-load_dotenv()  # Load biến môi trường từ file .env
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(CURRENT_DIR, ".env")
+load_dotenv(ENV_PATH)
 
-# Đọc thông tin cấu hình từ file .env (không hardcode trong code)
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")   # App Password, không phải mật khẩu Gmail thường
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.environ.get("EMAIL_RECEIVER")
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
