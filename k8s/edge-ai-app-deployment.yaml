@@ -1,0 +1,46 @@
+# Deployment demo mà orchestrator (modules/k3s_client.py -> K3sClient) sẽ đọc
+# CPU/RAM và scale. Tên/namespace phải khớp CHÍNH XÁC với K3sResourceState
+# trong modules/ai_service.py: deployment_name="edge-ai-app", namespace="default".
+#
+# Label "app: edge-ai-app" phải giữ nguyên — K3sClient.get_pods() lọc pod bằng
+# label_selector="app=edge-ai-app".
+#
+# requests/limits CPU & RAM được khai báo cụ thể vì K3sClient tính % sử dụng
+# = usage / limit (hoặc request nếu không có limit). Thiếu requests/limits ->
+# get_pods() sẽ không tính được % thật, phải rơi về CPU/RAM host làm dự phòng.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-ai-app
+  namespace: default
+  labels:
+    app: edge-ai-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: edge-ai-app
+  template:
+    metadata:
+      labels:
+        app: edge-ai-app
+    spec:
+      containers:
+        - name: edge-ai-app
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+---
+# Cần metrics-server để K3sClient.get_pods() đọc CPU/RAM per-pod thật.
+# K3s không cài sẵn metrics-server mặc định — cài bằng:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# Với cluster dùng chứng chỉ tự ký (đa số cụm K3s demo), thêm flag
+# --kubelet-insecure-tls vào args của deployment metrics-server sau khi apply,
+# nếu không pod metrics-server sẽ CrashLoopBackOff vì TLS verify lỗi.

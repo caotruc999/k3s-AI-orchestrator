@@ -2,9 +2,16 @@ import os
 import sys
 import time
 import psutil
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import numpy as np
 import onnxruntime as ort
+
+# Windows mặc định dùng codepage không phải UTF-8 cho stdout/stderr, khiến
+# print() các thông báo tiếng Việt (vd. cảnh báo email) ném UnicodeEncodeError
+# và làm sập cả request đang xử lý. Ép stdout/stderr sang UTF-8 ngay từ đầu.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 MODULES_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(MODULES_DIR)
@@ -18,7 +25,7 @@ if EMAIL_DIR not in sys.path:
 
 from decision_policy import DecisionPolicy
 from ai_agent import AIAgent, AgentConfig
-from k3s_client import K3sClientMock, K3sResourceState
+from k3s_client import create_k3s_client, K3sResourceState
 from send_mail import send_alert_email, build_alert_message
 
 app = Flask(
@@ -53,8 +60,9 @@ output_name = session.get_outputs()[0].name
 
 policy = DecisionPolicy()
 
-# Khởi tạo K3s Client Mock
-k3s_client = K3sClientMock(
+# Khởi tạo K3s Client — ưu tiên cluster K8s thật, tự rơi về mock nếu không
+# kết nối được (xem create_k3s_client trong modules/k3s_client.py).
+k3s_client, k3s_client_mode = create_k3s_client(
     K3sResourceState(
         deployment_name="edge-ai-app",
         namespace="default",
@@ -63,6 +71,7 @@ k3s_client = K3sClientMock(
         max_replicas=5
     )
 )
+print(f"[K3s Client] Đang chạy ở chế độ: {k3s_client_mode.upper()}")
 
 # Khởi tạo AI Agent
 agent = AIAgent(
@@ -76,6 +85,13 @@ agent = AIAgent(
     )
 )
 
+# Lịch sử cảnh báo/scale thật (append mỗi khi có sự kiện), và log dự đoán
+# để tự tính độ chính xác AI theo thời gian — không phải mock.
+MAX_HISTORY = 50
+MAX_PREDICTIONS_LOG = 100
+orchestrator_history = []
+predictions_log = []
+
 # ==========================================
 # 2. HÀM BỔ TRỢ ĐỒNG BỘ TRẠNG THÁI (STATE SYNC)
 # ==========================================
@@ -83,6 +99,64 @@ def sync_agent_with_k3s():
     """Cập nhật current_replicas trong agent theo đúng thực tế từ K3s Client"""
     cluster_status = k3s_client.get_status()
     agent.current_replicas = cluster_status["current_replicas"]
+
+
+def get_current_system_metrics() -> dict:
+    cpu_percent = psutil.cpu_percent(interval=0.3)
+    memory = psutil.virtual_memory()
+
+    return {
+        "cpu_percent": round(cpu_percent, 2),
+        "memory_percent": round(memory.percent, 2),
+        "memory_used_mb": round(memory.used / 1024 / 1024, 2),
+        "memory_total_mb": round(memory.total / 1024 / 1024, 2),
+        "timestamp": int(time.time())
+    }
+
+
+def push_history(event_type: str, message: str, detail: str = ""):
+    orchestrator_history.append({
+        "type": event_type,
+        "message": message,
+        "detail": detail,
+        "timestamp": int(time.time())
+    })
+    del orchestrator_history[:-MAX_HISTORY]
+
+
+def push_prediction_log(cpu_percent: float, decision: str):
+    predictions_log.append({
+        "cpu_percent": cpu_percent,
+        "decision": decision,
+        "timestamp": int(time.time())
+    })
+    del predictions_log[:-MAX_PREDICTIONS_LOG]
+
+
+def compute_ai_accuracy():
+    """
+    Độ chính xác AI = tỉ lệ lần dự đoán trước đó đoán đúng CHIỀU biến động
+    CPU thực tế của lần đo kế tiếp (tăng/giảm/giữ nguyên khớp với quyết định
+    Scale Up/Scale Down/Keep đã đưa ra). Trả None nếu chưa đủ 2 lần dự đoán.
+    """
+    if len(predictions_log) < 2:
+        return None
+
+    correct = 0
+    total = 0
+    for prev, cur in zip(predictions_log, predictions_log[1:]):
+        if cur["cpu_percent"] > prev["cpu_percent"]:
+            actual_trend = "Scale Up"
+        elif cur["cpu_percent"] < prev["cpu_percent"]:
+            actual_trend = "Scale Down"
+        else:
+            actual_trend = "Keep"
+
+        total += 1
+        if prev["decision"] == actual_trend:
+            correct += 1
+
+    return round(correct / total * 100, 1) if total else None
 
 # ==========================================
 # 3. API ENDPOINTS
@@ -96,6 +170,12 @@ def home():
 @app.route("/status", methods=["GET"])
 def status():
     cluster_status = k3s_client.get_status()
+    system_metrics = get_current_system_metrics()
+    pods = k3s_client.get_pods(
+        cpu_percent=system_metrics["cpu_percent"],
+        memory_percent=system_metrics["memory_percent"]
+    )
+
     return jsonify({
         "mode": agent.config.mode,
         "deployment_name": cluster_status["deployment_name"],
@@ -103,8 +183,30 @@ def status():
         "current_replicas": cluster_status["current_replicas"],
         "min_replicas": cluster_status["min_replicas"],
         "max_replicas": cluster_status["max_replicas"],
-        "cooldown_seconds": agent.config.cooldown_seconds
+        "cooldown_seconds": agent.config.cooldown_seconds,
+        "cpu_percent": system_metrics["cpu_percent"],
+        "memory_percent": system_metrics["memory_percent"],
+        "pods": pods,
+        "history": list(reversed(orchestrator_history[-20:])),
+        "ai_accuracy": compute_ai_accuracy(),
+        "k3s_mode": k3s_client_mode
     })
+
+
+@app.route("/pods", methods=["GET"])
+def pods():
+    system_metrics = get_current_system_metrics()
+    return jsonify({
+        "pods": k3s_client.get_pods(
+            cpu_percent=system_metrics["cpu_percent"],
+            memory_percent=system_metrics["memory_percent"]
+        )
+    })
+
+
+@app.route("/history", methods=["GET"])
+def history():
+    return jsonify({"history": list(reversed(orchestrator_history))})
 
 
 @app.route("/mode", methods=["POST"])
@@ -144,6 +246,13 @@ def manual_scale():
 
         # Cập nhật ngược lại cho agent để ghi nhận số replica thực tế sau execution
         sync_agent_with_k3s()
+
+        if execution_result["changed"]:
+            push_history(
+                "manual_scale",
+                f"Thủ công {agent_result['action_taken']}: {execution_result['replicas_before']} → {execution_result['replicas_after']} pod",
+                agent_result["reason"]
+            )
 
         return jsonify({
             "mode": agent_result["mode"],
@@ -222,10 +331,11 @@ def predict():
         sync_agent_with_k3s()
 
         agent_result = agent.apply_decision(scaling_decision)
+        current_cpu = round(float(features[0]), 2)
+
         email_sent = False
         try:
             if scaling_decision == "Scale Up" or agent_result["action_taken"] == "Scaled Up":
-                current_cpu = round(float(features[0]), 2)
                 predicted_cpu = round(min(float(predicted_score) / 1.5 * 100, 100), 2)
                 threshold = 80.0
 
@@ -237,7 +347,7 @@ def predict():
                 email_sent = send_alert_email(subject, message)
         except Exception as mail_err:
             print(f"[Mail Warning] Không gửi được email: {mail_err}")
-        
+
         # 3. Map quyết định sang thực thi thật/mock trên K3s Cluster
         if agent_result["action_taken"] == "Scaled Up":
             execution_result = k3s_client.scale_up()
@@ -249,20 +359,23 @@ def predict():
         # Cập nhật lại replica state sau khi cluster đã scale
         sync_agent_with_k3s()
 
-        psutil.cpu_percent(interval=None)
+        # Ghi lại dự đoán (phục vụ tính AI accuracy) và lịch sử cảnh báo/scale thật
+        push_prediction_log(current_cpu, scaling_decision)
 
+        if agent_result["action_taken"] in ("Scaled Up", "Scaled Down"):
+            history_msg = (
+                f"AI quyết định {agent_result['action_taken']}: "
+                f"{execution_result['replicas_before']} → {execution_result['replicas_after']} pod"
+            )
+            push_history("ai_scale", history_msg, agent_result["reason"])
 
-        def get_current_system_metrics() -> dict:
-            cpu_percent = psutil.cpu_percent(interval=0.3)
-            memory = psutil.virtual_memory()
+        if email_sent:
+            push_history(
+                "alert",
+                f"CPU dự báo vượt ngưỡng ({current_cpu}% hiện tại)",
+                "Đã gửi email cảnh báo"
+            )
 
-            return {
-                "cpu_percent": round(cpu_percent, 2),
-                "memory_percent": round(memory.percent, 2),
-                "memory_used_mb": round(memory.used / 1024 / 1024, 2),
-                "memory_total_mb": round(memory.total / 1024 / 1024, 2),
-                "timestamp": int(time.time())
-            }
         return jsonify({
             "predicted_score": round(float(predicted_score), 6),
             "scaling_decision": scaling_decision,

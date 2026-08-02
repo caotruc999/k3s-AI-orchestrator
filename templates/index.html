@@ -174,14 +174,9 @@
     <span class="tag tag-warn" id="alert-badge">⚠ TỰ ĐỘNG</span>
   </div>
   <div class="topbar-right">
-    <select class="branch-select" onchange="showToast('Đã chuyển chi nhánh: ' + this.value)">
-      <option>Chi nhánh: Tất cả</option>
-      <option>Chi nhánh Hà Nội</option>
-      <option>Chi nhánh HCM</option>
-      <option>Chi nhánh Đà Nẵng</option>
-    </select>
+    <span class="card-badge badge-blue" id="cluster-label">k3s-cluster · edge-node-01</span>
+    <span class="card-badge" id="k3s-mode-badge" style="background:#7D8FA420;color:#7D8FA4">- đang kiểm tra cluster</span>
     <button class="btn btn-ghost" onclick="showToast('Đang xuất báo cáo PDF…')">Xuất báo cáo</button>
-    <button class="btn btn-primary" onclick="showToast('Chức năng thêm chi nhánh')">+ Thêm chi nhánh</button>
   </div>
 </div>
 
@@ -190,7 +185,6 @@
   <div class="sidebar">
     <div class="nav-section">Tổng quan</div>
     <div class="nav-item active" data-target="section-dashboard"><span class="nav-dot dot-blue"></span>Dashboard</div>
-    <div class="nav-item" data-target="section-dashboard"><span class="nav-dot dot-muted"></span>Toàn bộ chi nhánh</div>
 
     <div class="nav-section">Giám sát</div>
     <div class="nav-item" data-target="section-metrics"><span class="nav-dot dot-green"></span>Metrics realtime</div>
@@ -214,30 +208,30 @@
     <!-- STAT CARDS -->
     <div class="stat-row" id="section-dashboard">
       <div class="stat">
-        <div class="stat-label">CPU trung bình</div>
-        <div class="stat-val warn" id="stat-cpu">78%</div>
-        <div class="stat-sub warn">↑ 12% so với 10 phút trước</div>
-        <span class="stat-badge badge-warn">Gần ngưỡng</span>
+        <div class="stat-label">CPU host hiện tại</div>
+        <div class="stat-val warn" id="stat-cpu">-</div>
+        <div class="stat-sub warn" id="stat-cpu-sub">Đang tải…</div>
+        <span class="stat-badge badge-warn" id="stat-cpu-badge">-</span>
       </div>
       <div class="stat">
-        <div class="stat-label">RAM trung bình</div>
-        <div class="stat-val up" id="stat-ram">61%</div>
-        <div class="stat-sub up">Ổn định</div>
-        <span class="stat-badge badge-green">Bình thường</span>
+        <div class="stat-label">RAM host hiện tại</div>
+        <div class="stat-val up" id="stat-ram">-</div>
+        <div class="stat-sub up" id="stat-ram-sub">Đang tải…</div>
+        <span class="stat-badge badge-green" id="stat-ram-badge">-</span>
       </div>
       <div class="stat">
         <div class="stat-label">Tổng Pod đang chạy</div>
-        <div class="stat-val" id="stat-pods">1</div>
+        <div class="stat-val" id="stat-pods">-</div>
         <div class="stat-sub up">
-          Mode: <span id="system-mode">AUTO</span> · Min <span id="min-replicas">1</span> · Max <span id="max-replicas">5</span>
+          Mode: <span id="system-mode">-</span> · Min <span id="min-replicas">-</span> · Max <span id="max-replicas">-</span>
         </div>
-        <span class="stat-badge badge-blue" id="cooldown-seconds">30s</span>
+        <span class="stat-badge badge-blue" id="cooldown-seconds">-</span>
       </div>
       <div class="stat">
-        <div class="stat-label">Độ chính xác AI (24h)</div>
-        <div class="stat-val up">94.2%</div>
-        <div class="stat-sub up">↑ 1.3% sau retrain</div>
-        <span class="stat-badge badge-green">Tốt</span>
+        <div class="stat-label">Độ chính xác AI</div>
+        <div class="stat-val up" id="stat-accuracy">-</div>
+        <div class="stat-sub up" id="stat-accuracy-sub">Cần thêm dự đoán để tính</div>
+        <span class="stat-badge badge-green">Từ lịch sử dự đoán thật</span>
       </div>
     </div>
 
@@ -245,8 +239,8 @@
     <div class="grid2" id="section-metrics">
       <div class="card">
         <div class="card-head">
-          <div class="card-title">CPU theo thời gian thực</div>
-          <span class="card-badge badge-warn" id="cpu-current-badge">78% hiện tại</span>
+          <div class="card-title">CPU host (thật, qua psutil)</div>
+          <span class="card-badge badge-warn" id="cpu-current-badge">- hiện tại</span>
         </div>
         <div class="chart-wrap">
           <svg class="chart" viewBox="0 0 360 100">
@@ -278,8 +272,8 @@
 
       <div class="card">
         <div class="card-head">
-          <div class="card-title">RAM theo thời gian thực</div>
-          <span class="card-badge badge-green" id="ram-current-badge">61% hiện tại</span>
+          <div class="card-title">RAM host (thật, qua psutil)</div>
+          <span class="card-badge badge-green" id="ram-current-badge">- hiện tại</span>
         </div>
         <div class="chart-wrap">
           <svg class="chart" viewBox="0 0 360 100">
@@ -312,43 +306,29 @@
     <div class="grid3" id="section-forecast">
       <div class="card">
         <div class="card-head">
-          <div class="card-title">🤖 AI dự báo tải — 5 phút tới</div>
+          <div class="card-title">🤖 AI dự báo tải — lần gần nhất</div>
           <span class="card-badge" style="background:#8B5CF620;color:#8B5CF6">ONNX Runtime</span>
         </div>
-        <div class="forecast-row">
-          <div class="fc-block">
-            <div class="fc-time">+1 phút</div>
-            <div class="fc-val warn">82%</div>
-            <div class="fc-bar"></div>
-            <div class="fc-fill" style="background:#F59E0B;width:82%"></div>
-          </div>
-          <div class="fc-block">
-            <div class="fc-time">+2 phút</div>
-            <div class="fc-val warn">85%</div>
-            <div class="fc-bar"></div>
-            <div class="fc-fill" style="background:#F59E0B;width:85%"></div>
-          </div>
-          <div class="fc-block">
-            <div class="fc-time">+3 phút</div>
-            <div class="fc-val danger">89%</div>
-            <div class="fc-bar"></div>
-            <div class="fc-fill" style="background:#EF4444;width:89%"></div>
-          </div>
-          <div class="fc-block">
-            <div class="fc-time">+4 phút</div>
-            <div class="fc-val danger">91%</div>
-            <div class="fc-bar"></div>
-            <div class="fc-fill" style="background:#EF4444;width:91%"></div>
-          </div>
-          <div class="fc-block">
-            <div class="fc-time">+5 phút</div>
-            <div class="fc-val danger">88%</div>
-            <div class="fc-bar"></div>
-            <div class="fc-fill" style="background:#EF4444;width:88%"></div>
+        <div class="forecast-row" id="forecast-empty">
+          <div style="font-size:12px;color:var(--muted)">
+            Chưa có lần dự đoán nào. Vào mục "Can thiệp thủ công" bên dưới, nạp sample và bấm Predict để chạy mô hình ONNX thật.
           </div>
         </div>
-        <div style="margin-top:14px;padding:10px;background:#EF444410;border:1px solid #EF444430;border-radius:8px;font-size:12px;color:#EF4444">
-          ⚠ AI dự báo tải vượt 85% trong 3–5 phút tới. Đã tự động scale up 3 pod.
+        <div class="forecast-row" id="forecast-result" style="display:none">
+          <div class="fc-block">
+            <div class="fc-time">Predicted score</div>
+            <div class="fc-val" id="fc-score">-</div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">Quyết định</div>
+            <div class="fc-val" id="fc-decision">-</div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">Replicas</div>
+            <div class="fc-val" id="fc-replicas">-</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:10px;background:#EF444410;border:1px solid #EF444430;border-radius:8px;font-size:12px;color:#EF4444;display:none" id="forecast-alert-banner">
         </div>
         <div class="action-row" id="manual-control-panel">
           <button class="btn-success" id="btn-scale-up" type="button">✚ Scale UP thủ công</button>
@@ -509,37 +489,8 @@
               <th>Tên Pod</th><th>Node</th><th>CPU</th><th>RAM</th><th>Trạng thái</th>
             </tr>
           </thead>
-          <tbody>
-            <tr>
-              <td><span class="status-dot" style="background:#10B981"></span>api-server-7f4</td>
-              <td style="color:var(--muted)">node-01</td>
-              <td class="warn">82%</td><td class="up">58%</td>
-              <td><span class="stat-badge badge-green">Running</span></td>
-            </tr>
-            <tr>
-              <td><span class="status-dot" style="background:#10B981"></span>api-server-8a1</td>
-              <td style="color:var(--muted)">node-01</td>
-              <td class="warn">79%</td><td class="up">61%</td>
-              <td><span class="stat-badge badge-green">Running</span></td>
-            </tr>
-            <tr>
-              <td><span class="status-dot" style="background:#F59E0B"></span>api-server-9b2</td>
-              <td style="color:var(--muted)">node-02</td>
-              <td class="danger">91%</td><td class="warn">74%</td>
-              <td><span class="stat-badge badge-warn">High load</span></td>
-            </tr>
-            <tr>
-              <td><span class="status-dot" style="background:#10B981"></span>worker-3c5 ✦ mới</td>
-              <td style="color:var(--muted)">node-02</td>
-              <td class="up">12%</td><td class="up">18%</td>
-              <td><span class="stat-badge badge-blue">Scale UP</span></td>
-            </tr>
-            <tr>
-              <td><span class="status-dot" style="background:#10B981"></span>worker-3c6 ✦ mới</td>
-              <td style="color:var(--muted)">node-03</td>
-              <td class="up">9%</td><td class="up">15%</td>
-              <td><span class="stat-badge badge-blue">Scale UP</span></td>
-            </tr>
+          <tbody id="pod-table-body">
+            <tr><td colspan="5" style="color:var(--muted)">Đang tải danh sách pod…</td></tr>
           </tbody>
         </table>
       </div>
@@ -551,35 +502,11 @@
         </div>
 
         <div id="activity-log">
-          <div class="alert-item">
-            <div class="alert-icon" style="background:#EF444420;color:#EF4444">⚠</div>
+          <div class="alert-item" id="activity-log-empty">
+            <div class="alert-icon" style="background:#3B82F620;color:#3B82F6">ℹ</div>
             <div>
-              <div class="alert-msg">CPU vượt ngưỡng 75% tại node-02</div>
-              <div class="alert-time">14:32:07 — Email đã gửi tới admin@hospital.vn</div>
-            </div>
-          </div>
-
-          <div class="alert-item">
-            <div class="alert-icon" style="background:#10B98120;color:#10B981">↑</div>
-            <div>
-              <div class="alert-msg">AI kích hoạt scale UP: +3 pod (worker-3c4, 3c5, 3c6)</div>
-              <div class="alert-time">14:31:52 — AI dự báo tải 89% trong 3 phút</div>
-            </div>
-          </div>
-
-          <div class="alert-item">
-            <div class="alert-icon" style="background:#8B5CF620;color:#8B5CF6">⟳</div>
-            <div>
-              <div class="alert-msg">Retrain hoàn tất — Độ chính xác tăng 94.2%</div>
-              <div class="alert-time">13:00:00 — 1,240 mẫu dữ liệu mới</div>
-            </div>
-          </div>
-
-          <div class="alert-item">
-            <div class="alert-icon" style="background:#3B82F620;color:#3B82F6">↓</div>
-            <div>
-              <div class="alert-msg">AI kích hoạt scale DOWN: -2 pod</div>
-              <div class="alert-time">11:15:30 — Tải giảm xuống 35% sau giờ cao điểm</div>
+              <div class="alert-msg">Chưa có sự kiện nào</div>
+              <div class="alert-time">Lịch sử sẽ xuất hiện khi có scale hoặc cảnh báo email thật</div>
             </div>
           </div>
         </div>
@@ -620,21 +547,21 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
-function appendLog(message, type = "info") {
-  const logBox = $("activity-log");
-  if (!logBox) return;
+const HISTORY_ICON_MAP = {
+  error: { icon: "⚠", bg: "#EF444420", color: "#EF4444" },
+  alert: { icon: "⚠", bg: "#EF444420", color: "#EF4444" },
+  success: { icon: "✓", bg: "#10B98120", color: "#10B981" },
+  ai_scale: { icon: "↑", bg: "#10B98120", color: "#10B981" },
+  manual_scale: { icon: "✋", bg: "#3B82F620", color: "#3B82F6" },
+  info: { icon: "ℹ", bg: "#3B82F620", color: "#3B82F6" }
+};
 
+const seenHistoryKeys = new Set();
+
+function makeLogItem(message, detail, type, timeLabel) {
   const item = document.createElement("div");
   item.className = "alert-item";
-
-  const iconMap = {
-    error: { icon: "⚠", bg: "#EF444420", color: "#EF4444" },
-    success: { icon: "✓", bg: "#10B98120", color: "#10B981" },
-    info: { icon: "ℹ", bg: "#3B82F620", color: "#3B82F6" }
-  };
-
-  const iconCfg = iconMap[type] || iconMap.info;
-  const now = new Date().toLocaleTimeString("vi-VN");
+  const iconCfg = HISTORY_ICON_MAP[type] || HISTORY_ICON_MAP.info;
 
   item.innerHTML = `
     <div class="alert-icon" style="background:${iconCfg.bg};color:${iconCfg.color}">
@@ -642,11 +569,94 @@ function appendLog(message, type = "info") {
     </div>
     <div>
       <div class="alert-msg">${message}</div>
-      <div class="alert-time">${now} — Dashboard AI</div>
+      <div class="alert-time">${timeLabel}${detail ? " — " + detail : ""}</div>
     </div>
   `;
+  return item;
+}
 
-  logBox.prepend(item);
+function appendLog(message, type = "info") {
+  const logBox = $("activity-log");
+  if (!logBox) return;
+  $("activity-log-empty")?.remove();
+  const now = new Date().toLocaleTimeString("vi-VN");
+  logBox.prepend(makeLogItem(message, "Dashboard AI", type, now));
+}
+
+function renderHistory(historyEntries) {
+  const logBox = $("activity-log");
+  if (!logBox || !Array.isArray(historyEntries) || historyEntries.length === 0) return;
+
+  // Server trả về mới nhất trước; ta duyệt ngược để prepend theo đúng thứ tự thời gian.
+  const fresh = [...historyEntries].reverse().filter(h => !seenHistoryKeys.has(`${h.timestamp}-${h.message}`));
+  if (fresh.length === 0) return;
+
+  $("activity-log-empty")?.remove();
+  fresh.forEach(h => {
+    seenHistoryKeys.add(`${h.timestamp}-${h.message}`);
+    const timeLabel = new Date(h.timestamp * 1000).toLocaleTimeString("vi-VN");
+    logBox.prepend(makeLogItem(h.message, h.detail, h.type, timeLabel));
+  });
+}
+
+function renderPods(pods) {
+  const tbody = $("pod-table-body");
+  if (!tbody) return;
+
+  if (!Array.isArray(pods) || pods.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted)">Không có pod nào đang chạy</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pods.map(p => {
+    const cpuClass = p.cpu_percent >= 85 ? "danger" : (p.cpu_percent >= 70 ? "warn" : "up");
+    const ramClass = p.memory_percent >= 85 ? "danger" : (p.memory_percent >= 70 ? "warn" : "up");
+    const badgeClass = p.status === "High load" ? "badge-warn" : "badge-green";
+    const dotColor = p.status === "High load" ? "#F59E0B" : "#10B981";
+
+    return `
+      <tr>
+        <td><span class="status-dot" style="background:${dotColor}"></span>${p.name}</td>
+        <td style="color:var(--muted)">${p.node}</td>
+        <td class="${cpuClass}">${p.cpu_percent}%</td>
+        <td class="${ramClass}">${p.memory_percent}%</td>
+        <td><span class="stat-badge ${badgeClass}">${p.status}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function updateStatCards(data) {
+  setText("stat-cpu", `${data.cpu_percent}%`);
+  setText("stat-cpu-badge", data.cpu_percent >= 75 ? "Gần ngưỡng" : "Bình thường");
+  setText("stat-cpu-sub", data.cpu_percent >= 75 ? "Vượt ngưỡng cảnh báo" : "Ổn định");
+  setText("cpu-current-badge", `${data.cpu_percent}% hiện tại`);
+
+  setText("stat-ram", `${data.memory_percent}%`);
+  setText("stat-ram-badge", data.memory_percent >= 70 ? "Gần ngưỡng" : "Bình thường");
+  setText("stat-ram-sub", data.memory_percent >= 70 ? "Vượt ngưỡng cảnh báo" : "Ổn định");
+  setText("ram-current-badge", `${data.memory_percent}% hiện tại`);
+
+  if (data.ai_accuracy === null || data.ai_accuracy === undefined) {
+    setText("stat-accuracy", "-");
+    setText("stat-accuracy-sub", "Cần thêm dự đoán để tính");
+  } else {
+    setText("stat-accuracy", `${data.ai_accuracy}%`);
+    setText("stat-accuracy-sub", `Tính từ ${data.history ? "lịch sử" : ""} dự đoán thật`);
+  }
+
+  const modeBadge = $("k3s-mode-badge");
+  if (modeBadge) {
+    if (data.k3s_mode === "real") {
+      modeBadge.textContent = "🟢 K3s cluster thật";
+      modeBadge.style.background = "#10B98120";
+      modeBadge.style.color = "#10B981";
+    } else {
+      modeBadge.textContent = "🟡 Mock (chưa nối được K3s cluster)";
+      modeBadge.style.background = "#F59E0B20";
+      modeBadge.style.color = "#F59E0B";
+    }
+  }
 }
 
 function updateModeBadge(mode) {
@@ -723,6 +733,26 @@ function showResult(data) {
   setText("result-mode", data.mode ?? "-");
   setText("result-replicas", `${data.replicas_before ?? "-"} → ${data.replicas_after ?? "-"}`);
   setText("result-reason", data.reason ?? "-");
+  updateForecastCard(data);
+}
+
+function updateForecastCard(data) {
+  $("forecast-empty").style.display = "none";
+  $("forecast-result").style.display = "flex";
+
+  setText("fc-score", data.predicted_score ?? "-");
+  setText("fc-decision", data.scaling_decision ?? "-");
+  setText("fc-replicas", `${data.replicas_before ?? "-"} → ${data.replicas_after ?? "-"}`);
+
+  const banner = $("forecast-alert-banner");
+  if (data.scaling_decision === "Scale Up" || data.action_taken === "Scaled Up") {
+    banner.style.display = "block";
+    banner.textContent = data.email_sent
+      ? "⚠ AI dự báo tải vượt ngưỡng — đã tự động Scale Up và gửi email cảnh báo."
+      : "⚠ AI dự báo tải vượt ngưỡng — đã tự động Scale Up.";
+  } else {
+    banner.style.display = "none";
+  }
 }
 
 function saveThresholds() {
@@ -769,6 +799,9 @@ async function fetchStatus() {
     setText("cooldown-seconds", `${data.cooldown_seconds}s`);
 
     updateModeBadge(data.mode);
+    updateStatCards(data);
+    renderPods(data.pods);
+    renderHistory(data.history);
 
   } catch (err) {
     appendLog(`Lỗi status: ${err.message}`, "error");
