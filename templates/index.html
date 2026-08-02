@@ -176,7 +176,6 @@
   <div class="topbar-right">
     <span class="card-badge badge-blue" id="cluster-label">k3s-cluster · edge-node-01</span>
     <span class="card-badge" id="k3s-mode-badge" style="background:#7D8FA420;color:#7D8FA4">- đang kiểm tra cluster</span>
-    <button class="btn btn-ghost" onclick="showToast('Đang xuất báo cáo PDF…')">Xuất báo cáo</button>
   </div>
 </div>
 
@@ -193,13 +192,10 @@
 
     <div class="nav-section">Điều phối</div>
     <div class="nav-item" data-target="section-pods"><span class="nav-dot dot-green"></span>Quản lý Pod</div>
-    <div class="nav-item" data-target="section-forecast"><span class="nav-dot dot-blue"></span>HPA / VPA</div>
     <div class="nav-item" data-target="section-predict"><span class="nav-dot dot-muted"></span>Can thiệp thủ công</div>
 
     <div class="nav-section">Cài đặt</div>
-    <div class="nav-item" data-target="section-thresholds"><span class="nav-dot dot-warn"></span>Ngưỡng cảnh báo</div>
-    <div class="nav-item" data-target="section-predict"><span class="nav-dot dot-blue"></span>Retrain mô hình</div>
-    <div class="nav-item" data-target="section-history"><span class="nav-dot dot-muted"></span>Thông báo email</div>
+    <div class="nav-item" data-target="section-thresholds"><span class="nav-dot dot-warn"></span>Ngưỡng quyết định AI</div>
   </div>
 
   <!-- MAIN CONTENT -->
@@ -349,33 +345,20 @@
 
       <div class="card" id="section-thresholds">
         <div class="card-head">
-          <div class="card-title">Ngưỡng cảnh báo</div>
-          <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="saveThresholds()">Lưu</button>
+          <div class="card-title">Ngưỡng quyết định AI</div>
+          <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" id="btn-save-thresholds" type="button">Lưu</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">
+          Áp trực tiếp vào <code>DecisionPolicy</code> đang chạy — đơn vị là
+          điểm dự đoán ONNX (predicted_score), không phải %.
         </div>
         <div class="thresh-row">
-          <div class="thresh-label">CPU cảnh báo<div class="thresh-desc">Gửi thông báo khi vượt</div></div>
-          <input class="thresh-input" id="th-cpu-warn" value="75"/>
-          <span class="thresh-unit">%</span>
+          <div class="thresh-label">Ngưỡng Scale Up<div class="thresh-desc">predicted_score ≥ ngưỡng này → Scale Up</div></div>
+          <input class="thresh-input" id="th-scale-up" value="1.1" type="number" step="0.01"/>
         </div>
         <div class="thresh-row">
-          <div class="thresh-label">CPU nguy hiểm<div class="thresh-desc">Scale UP ngay lập tức</div></div>
-          <input class="thresh-input" id="th-cpu-crit" value="90"/>
-          <span class="thresh-unit">%</span>
-        </div>
-        <div class="thresh-row">
-          <div class="thresh-label">RAM cảnh báo<div class="thresh-desc">Gửi thông báo khi vượt</div></div>
-          <input class="thresh-input" id="th-ram-warn" value="70"/>
-          <span class="thresh-unit">%</span>
-        </div>
-        <div class="thresh-row">
-          <div class="thresh-label">Scale DOWN khi dưới<div class="thresh-desc">Giảm pod tiết kiệm tài nguyên</div></div>
-          <input class="thresh-input" id="th-scale-down" value="40"/>
-          <span class="thresh-unit">%</span>
-        </div>
-        <div class="thresh-row">
-          <div class="thresh-label">Ngưỡng chuyển HPA/VPA<div class="thresh-desc">Khi AI dự báo vượt mức này</div></div>
-          <input class="thresh-input" id="th-hpa" value="80"/>
-          <span class="thresh-unit">%</span>
+          <div class="thresh-label">Ngưỡng Scale Down<div class="thresh-desc">predicted_score dưới ngưỡng này → Scale Down</div></div>
+          <input class="thresh-input" id="th-scale-down" value="0.8" type="number" step="0.01"/>
         </div>
       </div>
     </div>
@@ -632,16 +615,29 @@ function renderPods(pods) {
   }).join("");
 }
 
-function updateStatCards(data) {
-  setText("stat-cpu", `${data.cpu_percent}%`);
-  setText("stat-cpu-badge", data.cpu_percent >= 75 ? "Gần ngưỡng" : "Bình thường");
-  setText("stat-cpu-sub", data.cpu_percent >= 75 ? "Vượt ngưỡng cảnh báo" : "Ổn định");
-  setText("cpu-current-badge", `${data.cpu_percent}% hiện tại`);
+function setBadgeState(id, isWarn) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.toggle("badge-warn", isWarn);
+  el.classList.toggle("badge-green", !isWarn);
+}
 
+function updateStatCards(data) {
+  const cpuWarn = data.cpu_percent >= 75;
+  setText("stat-cpu", `${data.cpu_percent}%`);
+  setText("stat-cpu-badge", cpuWarn ? "Gần ngưỡng" : "Bình thường");
+  setText("stat-cpu-sub", cpuWarn ? "Vượt ngưỡng cảnh báo" : "Ổn định");
+  setBadgeState("stat-cpu-badge", cpuWarn);
+  setText("cpu-current-badge", `${data.cpu_percent}% hiện tại`);
+  setBadgeState("cpu-current-badge", cpuWarn);
+
+  const ramWarn = data.memory_percent >= 70;
   setText("stat-ram", `${data.memory_percent}%`);
-  setText("stat-ram-badge", data.memory_percent >= 70 ? "Gần ngưỡng" : "Bình thường");
-  setText("stat-ram-sub", data.memory_percent >= 70 ? "Vượt ngưỡng cảnh báo" : "Ổn định");
+  setText("stat-ram-badge", ramWarn ? "Gần ngưỡng" : "Bình thường");
+  setText("stat-ram-sub", ramWarn ? "Vượt ngưỡng cảnh báo" : "Ổn định");
+  setBadgeState("stat-ram-badge", ramWarn);
   setText("ram-current-badge", `${data.memory_percent}% hiện tại`);
+  setBadgeState("ram-current-badge", ramWarn);
 
   if (data.ai_accuracy === null || data.ai_accuracy === undefined) {
     setText("stat-accuracy", "-");
@@ -715,19 +711,18 @@ document.getElementById("resetStateBtn")?.addEventListener("click", async () => 
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.error || "Reset state thất bại.");
+        showToast(data.error || "Reset state thất bại.");
+        appendLog(`Reset state thất bại: ${data.error || "lỗi không rõ"}`, "error");
         return;
       }
 
-      alert("Đã reset state và cooldown thành công.");
-
-      // Nếu có hàm loadStatus hoặc refreshDashboard thì gọi lại
-      if (typeof loadStatus === "function") {
-        loadStatus();
-      }
+      showToast("Đã reset state và cooldown thành công.");
+      appendLog("Đã reset state hệ thống về baseline", "success");
+      await fetchStatus();
 
     } catch (error) {
-      alert("Không thể kết nối tới API reset-state.");
+      showToast("Không thể kết nối tới API reset-state.");
+      appendLog(`Lỗi reset-state: ${error.message}`, "error");
       console.error(error);
     }
   });
@@ -764,20 +759,47 @@ function updateForecastCard(data) {
   }
 }
 
-function saveThresholds() {
-  const cpuWarn = $("th-cpu-warn")?.value;
-  const cpuCrit = $("th-cpu-crit")?.value;
-  const ramWarn = $("th-ram-warn")?.value;
-  const scaleDown = $("th-scale-down")?.value;
-  const hpa = $("th-hpa")?.value;
+async function loadThresholds() {
+  try {
+    const res = await fetch("/thresholds");
+    const data = await res.json();
+    if (!res.ok) return;
 
-  appendLog(
-    `Đã lưu ngưỡng giao diện: CPU warn ${cpuWarn}%, CPU crit ${cpuCrit}%, RAM warn ${ramWarn}%, Scale down ${scaleDown}%, HPA ${hpa}%`,
-    "info"
-  );
+    if ($("th-scale-up")) $("th-scale-up").value = data.scale_up;
+    if ($("th-scale-down")) $("th-scale-down").value = data.scale_down;
+  } catch (err) {
+    console.error("Không tải được ngưỡng hiện tại:", err);
+  }
+}
 
-  if (typeof showToast === "function") {
-    showToast("Đã lưu ngưỡng cảnh báo trên giao diện");
+async function saveThresholds() {
+  const scaleUp = parseFloat($("th-scale-up")?.value);
+  const scaleDown = parseFloat($("th-scale-down")?.value);
+
+  if (Number.isNaN(scaleUp) || Number.isNaN(scaleDown)) {
+    showToast("Giá trị ngưỡng không hợp lệ");
+    return;
+  }
+
+  try {
+    const res = await fetch("/thresholds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scale_up: scaleUp, scale_down: scaleDown })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || "Lưu ngưỡng thất bại");
+      appendLog(`Lưu ngưỡng thất bại: ${data.error || "lỗi không rõ"}`, "error");
+      return;
+    }
+
+    showToast("Đã cập nhật ngưỡng quyết định AI");
+    appendLog(`Đã đổi ngưỡng AI: scale_down=${data.scale_down}, scale_up=${data.scale_up}`, "success");
+  } catch (err) {
+    showToast("Không thể kết nối tới API /thresholds");
+    appendLog(`Lỗi lưu ngưỡng: ${err.message}`, "error");
   }
 }
 
@@ -958,6 +980,7 @@ function bindEvents() {
 
   $("btn-predict")?.addEventListener("click", runPredict);
   $("btn-fill-sample")?.addEventListener("click", fillSampleData);
+  $("btn-save-thresholds")?.addEventListener("click", saveThresholds);
 }
 
 function bindSidebarNavigation() {
@@ -991,6 +1014,7 @@ async function initDashboard() {
   bindEvents();
   bindSidebarNavigation();
   await fetchStatus();
+  await loadThresholds();
   setInterval(fetchStatus, 5000);
 }
 

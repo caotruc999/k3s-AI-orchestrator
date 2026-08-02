@@ -418,6 +418,42 @@ def change_mode():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/thresholds", methods=["GET"])
+def get_thresholds():
+    return jsonify({
+        "scale_down": policy.thresholds.scale_down,
+        "scale_up": policy.thresholds.scale_up,
+    })
+
+
+@app.route("/thresholds", methods=["POST"])
+def set_thresholds():
+    try:
+        data = request.get_json() or {}
+        scale_down = float(data["scale_down"])
+        scale_up = float(data["scale_up"])
+
+        if scale_down >= scale_up:
+            return jsonify({"error": "scale_down phải nhỏ hơn scale_up."}), 400
+
+        policy.thresholds.scale_down = scale_down
+        policy.thresholds.scale_up = scale_up
+
+        push_history(
+            "info",
+            f"Đã đổi ngưỡng quyết định AI: scale_down={scale_down}, scale_up={scale_up}",
+            "Cập nhật qua dashboard"
+        )
+
+        return jsonify({
+            "message": "Đã cập nhật ngưỡng quyết định.",
+            "scale_down": policy.thresholds.scale_down,
+            "scale_up": policy.thresholds.scale_up,
+        })
+    except (KeyError, ValueError, TypeError) as e:
+        return jsonify({"error": f"Thiếu hoặc sai định dạng scale_down/scale_up: {e}"}), 400
+
+
 @app.route("/manual-scale", methods=["POST"])
 def manual_scale():
     try:

@@ -117,6 +117,7 @@ sample" ở dashboard nạp 1 dòng từ `dataset/data/output/cleaned_dataset.cs
 | GET | `/history` | Toàn bộ lịch sử scale/cảnh báo |
 | POST | `/mode` | Đổi `AUTO`/`MANUAL` |
 | POST | `/manual-scale` | Scale thủ công khi ở mode `MANUAL` |
+| GET/POST | `/thresholds` | Đọc/đổi ngưỡng `scale_down`/`scale_up` thật của `DecisionPolicy` |
 | POST | `/predict` | Chạy suy luận ONNX + tự scale nếu ở mode `AUTO` |
 | POST | `/reset-state` | Reset trạng thái orchestrator |
 | POST | `/test-email` | Gửi thử email cảnh báo |

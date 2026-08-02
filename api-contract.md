@@ -169,6 +169,8 @@ vào đó (đã dọn — xem mục Bảo mật bên dưới).
 | GET | `/history` | – | `{history: [...]}` (toàn bộ, không giới hạn 20 mục như trong `/status`) |
 | POST | `/mode` | `{mode: "AUTO"\|"MANUAL"}` | `{message, mode}` |
 | POST | `/manual-scale` | `{action: "Scale Up"\|"Scale Down"\|"Keep"}` | `{mode, action_taken, reason, replicas_before, replicas_after, execution_action, changed}` |
+| GET | `/thresholds` | – | `{scale_down, scale_up}` — ngưỡng thật đang áp cho `DecisionPolicy` |
+| POST | `/thresholds` | `{scale_down: float, scale_up: float}` (đơn vị `predicted_score`, không phải %; yêu cầu `scale_down < scale_up`) | `{message, scale_down, scale_up}` — đổi thật `policy.thresholds`, ảnh hưởng ngay lần `/predict` kế tiếp |
 | POST | `/reset-state` | – | `{message, mode, current_replicas, cooldown_active}` |
 | POST | `/test-email` | – | `{message, email_sent}` |
 | POST | `/predict` | 10 field ONNX feature (xem `FEATURE_NAMES` trong `ai_service.py`) | `{predicted_score, scaling_decision, mode, replicas_before, replicas_after, action_taken, reason, email_sent}` |
@@ -225,6 +227,28 @@ cluster K8s thật hay đang chạy fallback mock. Dashboard hiển thị badge 
   (Hà Nội/HCM/Đà Nẵng), nhãn `admin@hospital.vn`, dữ liệu pod/lịch sử/stat
   card viết cứng, node giả `node-01/02/03`; nối lại bằng dữ liệu thật từ
   `/status`.
+
+## Đã sửa UI (dashboard) — bug + chức năng giả
+
+- Badge CPU/RAM ở stat card và biểu đồ realtime luôn tô cố định 1 màu
+  (`badge-warn`/`badge-green`) bất kể giá trị thật, chỉ đổi chữ — chữ nói
+  "Bình thường" nhưng màu vẫn cảnh báo. Đã sửa: JS toggle đúng class theo
+  ngưỡng thật.
+- Nút "Reset State" dùng `alert()` chặn màn hình (khác UX phần còn lại dùng
+  toast) và gọi `loadStatus()` — hàm **không tồn tại** nên dashboard không tự
+  refresh sau reset. Đã đổi sang `showToast()` + `fetchStatus()`.
+- Xóa nút "Xuất báo cáo" (chỉ hiện toast giả, không xuất gì) và 3 mục sidebar
+  trỏ sai chỗ: "HPA/VPA" (trùng target với "AI dự báo tải"), "Retrain mô
+  hình", "Thông báo email" (không có section nào tương ứng, gây hiểu lầm).
+- Panel "Ngưỡng cảnh báo" cũ có 5 ô nhập %, nút "Lưu" chỉ ghi log ở trình
+  duyệt, không gọi API nào — đổi số không ảnh hưởng gì tới AI thật. Đã thay
+  bằng panel "Ngưỡng quyết định AI" chỉ giữ 2 ngưỡng có thật
+  (`scale_up`/`scale_down` của `DecisionPolicy`, đơn vị `predicted_score`),
+  nối qua route `/thresholds` mới — đã verify: đổi ngưỡng qua API rồi gọi lại
+  `/predict` với cùng input, quyết định thật đổi từ "Scale Down" sang "Keep".
+  3 ô còn lại (RAM cảnh báo, CPU cảnh báo %, ngưỡng HPA/VPA) bị bỏ vì không
+  có khái niệm tương ứng nào tồn tại trong code — giữ lại sẽ tái tạo đúng vấn
+  đề "giao diện giả" vừa dọn.
 
 ## Đã sửa thêm — lỗi ảnh hưởng trực tiếp tới độ đúng của AI (quan trọng)
 
