@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import threading
 import psutil
 import joblib
 from flask import Flask, request, jsonify, render_template
@@ -104,6 +105,13 @@ MAX_PREDICTIONS_LOG = 100
 orchestrator_history = []
 predictions_log = []
 
+# Khép kín vòng lặp: định kỳ tự lấy số liệu thật rồi tự gọi /predict logic,
+# thay vì chỉ chạy khi người dùng bấm nút hoặc nạp sample từ dataset cũ.
+AUTO_PREDICT_INTERVAL_SECONDS = int(os.environ.get("AUTO_PREDICT_INTERVAL_SECONDS", "15"))
+prediction_lock = threading.Lock()
+last_auto_prediction = None  # dict, cập nhật mỗi vòng lặp nền
+_io_sample_prev = {"time": None, "net_bytes": None, "disk_bytes": None}
+
 # ==========================================
 # 2. HÀM BỔ TRỢ ĐỒNG BỘ TRẠNG THÁI (STATE SYNC)
 # ==========================================
@@ -123,6 +131,71 @@ def get_current_system_metrics() -> dict:
         "memory_used_mb": round(memory.used / 1024 / 1024, 2),
         "memory_total_mb": round(memory.total / 1024 / 1024, 2),
         "timestamp": int(time.time())
+    }
+
+
+def collect_live_features() -> dict:
+    """
+    Xây đủ 10 feature model cần từ nguồn THẬT, không bịa số ngẫu nhiên. Mỗi
+    feature có độ "thật" khác nhau — ghi rõ để không hiểu nhầm là toàn bộ đều
+    đo trực tiếp trên pod:
+
+    - cpu_usage, memory_usage: CPU/RAM host thật (psutil) quy đổi ra cùng đơn
+      vị dataset (cores, MiB) — proxy cho tải cluster vì demo chỉ có 1 node.
+    - cpu_request/limit, memory_request/limit: đọc THẬT từ resources của
+      deployment đang chạy (K3sClient.get_resource_spec() / mock cố định
+      theo k8s/edge-ai-app-deployment.yaml).
+    - network_bandwidth_usage, disk_io: throughput mạng/đĩa THẬT của host
+      (psutil, tính bằng KB/s giữa 2 lần lấy mẫu) — proxy ở mức host, không
+      phải per-pod (K3s hiện không có Prometheus/cAdvisor để đo per-pod).
+    - network_latency: thời gian phản hồi THẬT khi gọi K8s API
+      (k3s_client.get_status()) — đo đúng độ trễ tới hạ tầng đang điều phối.
+    - pod_lifetime_seconds: tuổi trung bình THẬT của các pod đang chạy
+      (k3s_client.get_pods()), tính từ creation_timestamp thật (K3sClient)
+      hoặc thời gian mock client khởi tạo (K3sClientMock).
+    """
+    system_metrics = get_current_system_metrics()
+    cpu_cores_used = psutil.cpu_percent(interval=None) / 100 * psutil.cpu_count()
+
+    latency_start = time.perf_counter()
+    resource_spec = k3s_client.get_resource_spec()
+    network_latency_ms = (time.perf_counter() - latency_start) * 1000
+
+    pods = k3s_client.get_pods(
+        cpu_percent=system_metrics["cpu_percent"],
+        memory_percent=system_metrics["memory_percent"],
+    )
+    ages = [p["age_seconds"] for p in pods if p.get("age_seconds") is not None]
+    pod_lifetime_seconds = sum(ages) / len(ages) if ages else 0.0
+
+    now = time.monotonic()
+    net_counters = psutil.net_io_counters()
+    disk_counters = psutil.disk_io_counters()
+    net_bytes = net_counters.bytes_sent + net_counters.bytes_recv if net_counters else 0
+    disk_bytes = (disk_counters.read_bytes + disk_counters.write_bytes) if disk_counters else 0
+
+    network_bandwidth_kbps = 0.0
+    disk_io_kbps = 0.0
+    prev = _io_sample_prev
+    if prev["time"] is not None and now > prev["time"]:
+        elapsed = now - prev["time"]
+        network_bandwidth_kbps = max(0.0, (net_bytes - prev["net_bytes"]) / 1024 / elapsed)
+        disk_io_kbps = max(0.0, (disk_bytes - prev["disk_bytes"]) / 1024 / elapsed)
+    prev["time"] = now
+    prev["net_bytes"] = net_bytes
+    prev["disk_bytes"] = disk_bytes
+
+    return {
+        "cpu_usage": round(cpu_cores_used, 4),
+        "memory_usage": system_metrics["memory_used_mb"],
+        "cpu_request": resource_spec["cpu_request"],
+        "cpu_limit": resource_spec["cpu_limit"],
+        "memory_request": resource_spec["memory_request"],
+        "memory_limit": resource_spec["memory_limit"],
+        "network_bandwidth_usage": round(network_bandwidth_kbps, 2),
+        "network_latency": round(network_latency_ms, 2),
+        "disk_io": round(disk_io_kbps, 2),
+        "pod_lifetime_seconds": round(pod_lifetime_seconds, 1),
     }
 
 
@@ -170,6 +243,112 @@ def compute_ai_accuracy():
 
     return round(correct / total * 100, 1) if total else None
 
+
+def run_prediction_cycle(features: list, source: str) -> dict:
+    """
+    Logic lõi dùng chung cho cả /predict (người dùng bấm tay) và vòng lặp
+    nền tự động (source="auto") — suy luận ONNX, ra quyết định, thực thi
+    scale thật/mock, ghi log. Được bọc trong prediction_lock ở nơi gọi để
+    tránh 2 nguồn (tay + tự động) scale cùng lúc.
+    """
+    global last_auto_prediction
+
+    scaled_features = scaler.transform([features])
+    input_array = scaled_features.astype(np.float32)
+
+    predicted_score = session.run(
+        [output_name],
+        {input_name: input_array}
+    )[0][0][0]
+
+    scaling_decision = policy.decide(float(predicted_score))
+
+    sync_agent_with_k3s()
+
+    agent_result = agent.apply_decision(scaling_decision)
+    current_cpu = round(float(features[0]), 2)
+
+    email_sent = False
+    try:
+        if scaling_decision == "Scale Up" or agent_result["action_taken"] == "Scaled Up":
+            predicted_cpu = round(min(float(predicted_score) / 1.5 * 100, 100), 2)
+            threshold = 80.0
+
+            subject, message = build_alert_message(
+                current_cpu=current_cpu,
+                predicted_cpu=predicted_cpu,
+                threshold=threshold
+            )
+            email_sent = send_alert_email(subject, message)
+    except Exception as mail_err:
+        print(f"[Mail Warning] Không gửi được email: {mail_err}")
+
+    if agent_result["action_taken"] == "Scaled Up":
+        execution_result = k3s_client.scale_up()
+    elif agent_result["action_taken"] == "Scaled Down":
+        execution_result = k3s_client.scale_down()
+    else:
+        execution_result = k3s_client.keep()
+
+    sync_agent_with_k3s()
+
+    push_prediction_log(current_cpu, scaling_decision)
+
+    source_label = "tự động" if source == "auto" else "thủ công"
+
+    if agent_result["action_taken"] in ("Scaled Up", "Scaled Down"):
+        history_msg = (
+            f"AI quyết định ({source_label}) {agent_result['action_taken']}: "
+            f"{execution_result['replicas_before']} → {execution_result['replicas_after']} pod"
+        )
+        push_history("ai_scale", history_msg, agent_result["reason"])
+
+    if email_sent:
+        push_history(
+            "alert",
+            f"CPU dự báo vượt ngưỡng ({current_cpu} — {source_label})",
+            "Đã gửi email cảnh báo"
+        )
+
+    result = {
+        "predicted_score": round(float(predicted_score), 6),
+        "scaling_decision": scaling_decision,
+        "mode": agent_result["mode"],
+        "replicas_before": agent_result["current_replicas_before"],
+        "replicas_after": agent_result["current_replicas_after"],
+        "action_taken": agent_result["action_taken"],
+        "reason": agent_result["reason"],
+        "email_sent": email_sent,
+        "source": source,
+    }
+
+    if source == "auto":
+        last_auto_prediction = {**result, "timestamp": int(time.time())}
+
+    return result
+
+
+def auto_predict_loop():
+    """
+    Vòng lặp nền: định kỳ tự lấy số liệu THẬT (collect_live_features) và tự
+    gọi run_prediction_cycle — đây là phần khép kín "AI tự nhìn tải thật để
+    quyết định" thay vì chỉ chạy khi có người bấm nút / nạp sample cũ. Chỉ
+    hoạt động khi mode == AUTO; ở MANUAL, chỉ đọc số liệu để không lãng phí
+    nhưng không tự scale.
+    """
+    while True:
+        time.sleep(AUTO_PREDICT_INTERVAL_SECONDS)
+        try:
+            if agent.config.mode != "AUTO":
+                continue
+            features_dict = collect_live_features()
+            features = [features_dict[name] for name in FEATURE_NAMES]
+            with prediction_lock:
+                run_prediction_cycle(features, source="auto")
+        except Exception as exc:
+            print(f"[Auto Predict] Bỏ qua 1 vòng do lỗi: {exc}")
+
+
 # ==========================================
 # 3. API ENDPOINTS
 # ==========================================
@@ -201,7 +380,9 @@ def status():
         "pods": pods,
         "history": list(reversed(orchestrator_history[-20:])),
         "ai_accuracy": compute_ai_accuracy(),
-        "k3s_mode": k3s_client_mode
+        "k3s_mode": k3s_client_mode,
+        "auto_predict_interval_seconds": AUTO_PREDICT_INTERVAL_SECONDS,
+        "last_auto_prediction": last_auto_prediction,
     })
 
 
@@ -333,84 +514,26 @@ def predict():
     try:
         data = request.get_json() or {}
 
-        # 1. Trích xuất features thô (đơn vị gốc của dataset, KHÔNG phải giá
-        # trị đã chuẩn hóa) rồi áp scaler.pkl trước khi đưa vào ONNX — model
-        # được train trên dữ liệu đã StandardScaler nên bỏ qua bước này sẽ
-        # cho dự đoán sai lệch hoàn toàn.
+        # Input THÔ (đơn vị gốc dataset, KHÔNG phải z-score) — run_prediction_cycle
+        # tự áp scaler.pkl trước khi đưa vào ONNX.
         features = [float(data[name]) for name in FEATURE_NAMES]
-        scaled_features = scaler.transform([features])
-        input_array = scaled_features.astype(np.float32)
 
-        predicted_score = session.run(
-            [output_name],
-            {input_name: input_array}
-        )[0][0][0]
+        with prediction_lock:
+            result = run_prediction_cycle(features, source="manual")
 
-        # 2. Đưa ra quyết định Scaling
-        scaling_decision = policy.decide(float(predicted_score))
-
-        # Đảm bảo Agent đồng bộ dữ liệu số replica hiện tại với K3s trước khi ra quyết định
-        sync_agent_with_k3s()
-
-        agent_result = agent.apply_decision(scaling_decision)
-        current_cpu = round(float(features[0]), 2)
-
-        email_sent = False
-        try:
-            if scaling_decision == "Scale Up" or agent_result["action_taken"] == "Scaled Up":
-                predicted_cpu = round(min(float(predicted_score) / 1.5 * 100, 100), 2)
-                threshold = 80.0
-
-                subject, message = build_alert_message(
-                    current_cpu=current_cpu,
-                    predicted_cpu=predicted_cpu,
-                    threshold=threshold
-                )
-                email_sent = send_alert_email(subject, message)
-        except Exception as mail_err:
-            print(f"[Mail Warning] Không gửi được email: {mail_err}")
-
-        # 3. Map quyết định sang thực thi thật/mock trên K3s Cluster
-        if agent_result["action_taken"] == "Scaled Up":
-            execution_result = k3s_client.scale_up()
-        elif agent_result["action_taken"] == "Scaled Down":
-            execution_result = k3s_client.scale_down()
-        else:
-            execution_result = k3s_client.keep()
-
-        # Cập nhật lại replica state sau khi cluster đã scale
-        sync_agent_with_k3s()
-
-        # Ghi lại dự đoán (phục vụ tính AI accuracy) và lịch sử cảnh báo/scale thật
-        push_prediction_log(current_cpu, scaling_decision)
-
-        if agent_result["action_taken"] in ("Scaled Up", "Scaled Down"):
-            history_msg = (
-                f"AI quyết định {agent_result['action_taken']}: "
-                f"{execution_result['replicas_before']} → {execution_result['replicas_after']} pod"
-            )
-            push_history("ai_scale", history_msg, agent_result["reason"])
-
-        if email_sent:
-            push_history(
-                "alert",
-                f"CPU dự báo vượt ngưỡng ({current_cpu}% hiện tại)",
-                "Đã gửi email cảnh báo"
-            )
-
-        return jsonify({
-            "predicted_score": round(float(predicted_score), 6),
-            "scaling_decision": scaling_decision,
-            "mode": agent_result["mode"],
-            "replicas_before": agent_result["current_replicas_before"],
-            "replicas_after": agent_result["current_replicas_after"],
-            "action_taken": agent_result["action_taken"],
-            "reason": agent_result["reason"],
-            "email_sent": email_sent
-        })
+        return jsonify(result)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# Chỉ khởi động vòng lặp nền trong đúng 1 process thực sự phục vụ request.
+# Với debug=True, Werkzeug fork ra 1 process con để chạy reloader — process
+# gốc không set WERKZEUG_RUN_MAIN nên sẽ không khởi động thread ở đây, tránh
+# chạy 2 vòng lặp song song tự scale đè lên nhau.
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    threading.Thread(target=auto_predict_loop, daemon=True).start()
+    print(f"[Auto Predict] Đã bật vòng lặp tự động, chu kỳ {AUTO_PREDICT_INTERVAL_SECONDS}s.")
 
 
 if __name__ == "__main__":

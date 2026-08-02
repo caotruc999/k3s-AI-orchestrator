@@ -79,6 +79,21 @@ Ngay khi khởi động, server tự thử kết nối cluster K8s thật qua ku
 badge màu ở góc trên dashboard — không bao giờ hiển thị "thật" khi thực ra
 đang chạy mock.
 
+### Vòng lặp AI tự động (khép kín — không cần bấm nút)
+
+Ngay sau khi khởi động, một thread nền tự chạy: cứ mỗi
+`AUTO_PREDICT_INTERVAL_SECONDS` giây (mặc định **15s**, đổi bằng biến môi
+trường cùng tên) hệ thống tự lấy số liệu thật (CPU/RAM host, cpu/memory
+request-limit thật của deployment, network/disk throughput host, độ trễ tới
+K8s API, tuổi pod thật) rồi tự chạy lại đúng pipeline suy luận ONNX + quyết
+định của `/predict` — **khi mode = AUTO, nó tự scale cluster thật, không cần
+ai bấm nút.** Xem bảng "feature nào lấy từ đâu" trong
+[`api-contract.md`](api-contract.md) để biết cái nào đo per-pod thật, cái
+nào là proxy ở mức host (do K3s/Minikube demo chưa có Prometheus/cAdvisor).
+
+Route `/predict` vẫn còn — dùng để test tay với giá trị tùy ý (nút "Nạp
+sample" ở dashboard nạp 1 dòng từ `dataset/data/output/cleaned_dataset.csv`).
+
 ### Bật chế độ REAL trên cluster thật (K3s hoặc Minikube)
 
 1. Đảm bảo `kubectl get nodes` chạy được (kubeconfig đúng context).
@@ -97,7 +112,7 @@ badge màu ở góc trên dashboard — không bao giờ hiển thị "thật" k
 
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | `/status` | Trạng thái tổng hợp: replicas, CPU/RAM, pod list, lịch sử, AI accuracy, k3s_mode |
+| GET | `/status` | Trạng thái tổng hợp: replicas, CPU/RAM, pod list, lịch sử, AI accuracy, k3s_mode, lần dự đoán tự động gần nhất |
 | GET | `/pods` | Danh sách pod hiện tại |
 | GET | `/history` | Toàn bộ lịch sử scale/cảnh báo |
 | POST | `/mode` | Đổi `AUTO`/`MANUAL` |

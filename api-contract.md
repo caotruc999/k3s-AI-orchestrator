@@ -1,5 +1,43 @@
 # API Contract — Edge AI Orchestrator (K3s)
 
+## Vòng lặp khép kín: AI tự dự đoán từ số liệu thật (không cần bấm nút)
+
+Trước đây `/predict` chỉ chạy khi có người bấm nút hoặc nạp sẵn 1 dòng từ
+dataset Kaggle cũ — nghĩa là AI không hề tự nhìn cluster thật. Giờ đã khép
+kín: `modules/ai_service.py` chạy 1 thread nền (`auto_predict_loop`), mỗi
+`AUTO_PREDICT_INTERVAL_SECONDS` giây (mặc định 15s, đổi qua biến môi trường
+cùng tên) tự gọi `collect_live_features()` rồi tự chạy `run_prediction_cycle()`
+— **khi mode = AUTO**, quyết định đó tự scale cluster thật, không cần ai
+bấm gì. `/predict` (route cũ) vẫn còn, dùng để test tay/demo giá trị biên,
+dùng chung logic qua `run_prediction_cycle(features, source)`.
+
+`GET /status` trả thêm `auto_predict_interval_seconds` và
+`last_auto_prediction` (null nếu vòng lặp chưa chạy lần nào) để dashboard
+biết vòng lặp đang chạy, không phải bịa ra là "AI tự động" trong khi thực tế
+chỉ có nút bấm.
+
+**Đã verify thật trên minikube:** khởi động server, không bấm gì, sau đúng 1
+chu kỳ (`AUTO_PREDICT_INTERVAL_SECONDS`) `/status` trả `last_auto_prediction`
+với `source: "auto"`, và `kubectl get deployment edge-ai-app` xác nhận
+replicas thật tăng — hoàn toàn không có thao tác tay nào.
+
+### `collect_live_features()` lấy từng feature từ đâu — ghi rõ để không hiểu nhầm
+
+Model cần 10 feature (`FEATURE_NAMES`). Không phải cái nào cũng đo trực tiếp
+trên pod — K3s/Minikube hiện không có Prometheus/cAdvisor để đo per-pod
+network/disk. Độ "thật" của từng feature:
+
+| Feature | Nguồn | Mức độ thật |
+|---|---|---|
+| `cpu_usage`, `memory_usage` | `psutil` — CPU/RAM **host** đang chạy server | Thật, nhưng là proxy tải cluster ở mức host (demo 1 node), không phải usage của riêng 1 pod |
+| `cpu_request`, `cpu_limit`, `memory_request`, `memory_limit` | `k3s_client.get_resource_spec()` — đọc thật `resources.requests/limits` của deployment (K3sClient) hoặc giá trị cố định khớp `k8s/edge-ai-app-deployment.yaml` (mock) | Thật với K3sClient, cố định với mock |
+| `network_latency` | Đo round-trip time thật khi gọi K8s API (`k3s_client.get_status()`) | Thật, nhưng là độ trễ tới control-plane, không phải latency mạng của pod |
+| `network_bandwidth_usage`, `disk_io` | `psutil.net_io_counters()` / `disk_io_counters()` — throughput **host** giữa 2 lần lấy mẫu | Thật ở mức host, không phải per-pod (chưa có agent nào đo per-pod) |
+| `pod_lifetime_seconds` | Tuổi trung bình pod thật (`creation_timestamp` qua K3sClient, hoặc thời điểm mock client khởi tạo) | Thật với K3sClient |
+
+Không có feature nào bị bịa số ngẫu nhiên — chỗ nào chưa có hạ tầng đo per-pod
+thì dùng proxy ở mức host, ghi rõ trong bảng trên, không giấu.
+
 > File này thay thế mọi bản mô tả hợp đồng cũ (nhắc tới `app.py`,
 > `get_live_metrics()`, `execute_k3s_scale()`, `predict_future_load()`).
 > Những hàm đó **không còn tồn tại** trong repo — `app.py` đã bị xóa và
@@ -126,7 +164,7 @@ vào đó (đã dọn — xem mục Bảo mật bên dưới).
 | Method | Path | Request body | Response |
 |---|---|---|---|
 | GET | `/` | – | render `index.html` |
-| GET | `/status` | – | `{mode, deployment_name, namespace, current_replicas, min_replicas, max_replicas, cooldown_seconds, cpu_percent, memory_percent, pods[], history[], ai_accuracy, k3s_mode}` |
+| GET | `/status` | – | `{mode, deployment_name, namespace, current_replicas, min_replicas, max_replicas, cooldown_seconds, cpu_percent, memory_percent, pods[], history[], ai_accuracy, k3s_mode, auto_predict_interval_seconds, last_auto_prediction}` |
 | GET | `/pods` | – | `{pods: [...]}` (giống field `pods` trong `/status`) |
 | GET | `/history` | – | `{history: [...]}` (toàn bộ, không giới hạn 20 mục như trong `/status`) |
 | POST | `/mode` | `{mode: "AUTO"\|"MANUAL"}` | `{message, mode}` |

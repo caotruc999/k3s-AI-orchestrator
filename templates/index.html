@@ -311,7 +311,9 @@
         </div>
         <div class="forecast-row" id="forecast-empty">
           <div style="font-size:12px;color:var(--muted)">
-            Chưa có lần dự đoán nào. Vào mục "Can thiệp thủ công" bên dưới, nạp sample và bấm Predict để chạy mô hình ONNX thật.
+            Chưa có lần dự đoán nào. Ở mode AUTO, hệ thống tự động dự đoán mỗi
+            vài giây từ số liệu thật (xem badge nguồn dữ liệu bên dưới) — hoặc
+            vào "Can thiệp thủ công" để tự bấm Predict.
           </div>
         </div>
         <div class="forecast-row" id="forecast-result" style="display:none">
@@ -326,6 +328,10 @@
           <div class="fc-block">
             <div class="fc-time">Replicas</div>
             <div class="fc-val" id="fc-replicas">-</div>
+          </div>
+          <div class="fc-block">
+            <div class="fc-time">Nguồn</div>
+            <div class="fc-val" id="fc-source" style="font-size:12px">-</div>
           </div>
         </div>
         <div style="margin-top:14px;padding:10px;background:#EF444410;border:1px solid #EF444430;border-radius:8px;font-size:12px;color:#EF4444;display:none" id="forecast-alert-banner">
@@ -736,6 +742,8 @@ function showResult(data) {
   updateForecastCard(data);
 }
 
+let lastRenderedPredictionAt = null;
+
 function updateForecastCard(data) {
   $("forecast-empty").style.display = "none";
   $("forecast-result").style.display = "flex";
@@ -743,6 +751,7 @@ function updateForecastCard(data) {
   setText("fc-score", data.predicted_score ?? "-");
   setText("fc-decision", data.scaling_decision ?? "-");
   setText("fc-replicas", `${data.replicas_before ?? "-"} → ${data.replicas_after ?? "-"}`);
+  setText("fc-source", data.source === "auto" ? "🤖 Tự động (số liệu thật)" : "✋ Thủ công");
 
   const banner = $("forecast-alert-banner");
   if (data.scaling_decision === "Scale Up" || data.action_taken === "Scaled Up") {
@@ -802,6 +811,12 @@ async function fetchStatus() {
     updateStatCards(data);
     renderPods(data.pods);
     renderHistory(data.history);
+
+    const auto = data.last_auto_prediction;
+    if (auto && auto.timestamp !== lastRenderedPredictionAt) {
+      lastRenderedPredictionAt = auto.timestamp;
+      updateForecastCard(auto);
+    }
 
   } catch (err) {
     appendLog(`Lỗi status: ${err.message}`, "error");

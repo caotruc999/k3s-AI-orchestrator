@@ -68,6 +68,23 @@ class TestK3sClientMockPods(unittest.TestCase):
         pods = client.get_pods(cpu_percent=20.0, memory_percent=30.0)
         self.assertEqual(pods[0]["status"], "Running")
 
+    def test_pods_have_non_negative_age(self):
+        client = make_client(current_replicas=2)
+        pods = client.get_pods(cpu_percent=10.0, memory_percent=10.0)
+        for pod in pods:
+            self.assertIn("age_seconds", pod)
+            self.assertGreaterEqual(pod["age_seconds"], 0)
+
+
+class TestK3sClientMockResourceSpec(unittest.TestCase):
+    def test_resource_spec_matches_sample_manifest(self):
+        client = make_client()
+        spec = client.get_resource_spec()
+        self.assertEqual(spec["cpu_request"], 0.1)
+        self.assertEqual(spec["cpu_limit"], 0.25)
+        self.assertEqual(spec["memory_request"], 64.0)
+        self.assertEqual(spec["memory_limit"], 128.0)
+
 
 if __name__ == "__main__":
     unittest.main()

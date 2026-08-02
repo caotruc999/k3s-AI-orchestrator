@@ -1,5 +1,7 @@
 import logging
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,20 @@ class K3sResourceState:
     max_replicas: int = 5
 
 
+# Mặc định request/limit của deployment mẫu k8s/edge-ai-app-deployment.yaml
+# (cores, MiB) — dùng làm giá trị mock nhất quán với manifest thật.
+MOCK_RESOURCE_SPEC = {
+    "cpu_request": 0.1,
+    "cpu_limit": 0.25,
+    "memory_request": 64.0,
+    "memory_limit": 128.0,
+}
+
+
 class K3sClientMock:
     def __init__(self, state: K3sResourceState | None = None):
         self.state = state or K3sResourceState()
+        self._created_at = time.monotonic()
 
     def get_status(self) -> dict:
         return {
@@ -76,6 +89,7 @@ class K3sClientMock:
         chờ tích hợp K8s API thật.
         """
         pods = []
+        age_seconds = time.monotonic() - self._created_at
         for i in range(self.state.current_replicas):
             offset = i * 6
             pod_cpu = max(0.0, min(100.0, cpu_percent - offset if i > 0 else cpu_percent))
@@ -88,8 +102,14 @@ class K3sClientMock:
                 "cpu_percent": round(pod_cpu, 1),
                 "memory_percent": round(pod_ram, 1),
                 "status": status,
+                "age_seconds": round(age_seconds, 1),
             })
         return pods
+
+    def get_resource_spec(self) -> dict:
+        """Mock: trả cố định theo k8s/edge-ai-app-deployment.yaml (xem
+        MOCK_RESOURCE_SPEC) vì không có deployment thật để đọc."""
+        return dict(MOCK_RESOURCE_SPEC)
 
 
 def _parse_cpu_quantity(value: str | None) -> float | None:
@@ -267,14 +287,41 @@ class K3sClient:
             phase = pod.status.phase if pod.status else "Unknown"
             status = "Running" if phase == "Running" and cpu_pct < 85 else ("High load" if cpu_pct >= 85 else phase)
 
+            created_at = pod.metadata.creation_timestamp
+            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds() if created_at else None
+
             result.append({
                 "name": name,
                 "node": node,
                 "cpu_percent": round(cpu_pct, 1),
                 "memory_percent": round(mem_pct, 1),
                 "status": status,
+                "age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
             })
         return result
+
+    def get_resource_spec(self) -> dict:
+        """Đọc cpu/memory request+limit THẬT của container đầu tiên trong pod
+        template của deployment (dùng làm feature cho model AI thay vì bịa số)."""
+        deployment = self.apps_api.read_namespaced_deployment(
+            self.state.deployment_name, self.state.namespace, _request_timeout=5
+        )
+        containers = deployment.spec.template.spec.containers or []
+        resources = containers[0].resources if containers else None
+        limits = (resources.limits or {}) if resources else {}
+        requests = (resources.requests or {}) if resources else {}
+
+        cpu_request = _parse_cpu_quantity(requests.get("cpu"))
+        cpu_limit = _parse_cpu_quantity(limits.get("cpu"))
+        memory_request = _parse_memory_quantity(requests.get("memory"))
+        memory_limit = _parse_memory_quantity(limits.get("memory"))
+
+        return {
+            "cpu_request": (cpu_request or 0) / 1000,   # millicores -> cores, khớp đơn vị dataset
+            "cpu_limit": (cpu_limit or 0) / 1000,
+            "memory_request": memory_request or 0,      # đã ở MiB
+            "memory_limit": memory_limit or 0,
+        }
 
 
 def create_k3s_client(state: K3sResourceState | None = None):
