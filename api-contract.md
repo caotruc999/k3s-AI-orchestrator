@@ -187,3 +187,39 @@ cluster K8s thật hay đang chạy fallback mock. Dashboard hiển thị badge 
   (Hà Nội/HCM/Đà Nẵng), nhãn `admin@hospital.vn`, dữ liệu pod/lịch sử/stat
   card viết cứng, node giả `node-01/02/03`; nối lại bằng dữ liệu thật từ
   `/status`.
+
+## Đã sửa thêm — lỗi ảnh hưởng trực tiếp tới độ đúng của AI (quan trọng)
+
+- **`/predict` thiếu bước chuẩn hóa input.** `dataset/preprocessing.py` fit
+  `StandardScaler` trên toàn bộ feature rồi mới train model (bước 12), lưu
+  lại `dataset/data/output/scaler.pkl` đúng để dùng lúc suy luận — nhưng
+  `ai_service.py` trước đây đưa thẳng input thô vào ONNX, bỏ qua scaler này
+  hoàn toàn. Hệ quả: mọi giá trị người dùng nhập vào form "AI Predict trực
+  tiếp" (vd. cpu_usage=78) lệch hẳn phân phối lúc train (cpu_usage lúc train
+  chỉ nằm trong khoảng 0–4), khiến `predicted_score` vô nghĩa.
+  Đã sửa: `ai_service.py` load `scaler.pkl` bằng `joblib`, gọi
+  `scaler.transform([features])` trước khi đưa vào ONNX. **`/predict` giờ
+  nhận input ở đơn vị GỐC của dataset (không phải z-score đã chuẩn hóa)** —
+  xem cột tương ứng trong `dataset/data/output/cleaned_dataset.csv` để biết
+  khoảng giá trị hợp lý cho từng field.
+  Đã verify: gọi `/predict` với dòng đầu `cleaned_dataset.csv`
+  (`resource_pressure_score` thật = 0.603) → `predicted_score` = 0.708,
+  gần đúng — trước khi sửa, đưa thẳng giá trị thô này vào sẽ cho kết quả
+  sai lệch hoàn toàn vì model chưa từng thấy input ở scale đó.
+  Ảnh hưởng liên quan: `templates/index.html` (`fillSampleData()`) và
+  `modules/test_predict_from_xtest.py` / `test_predict_batch_api.py` trước
+  đó dùng dữ liệu đã scale sẵn từ `X_test.csv` — nếu không sửa theo sẽ bị
+  scale 2 lần. Đã đổi cả 3 chỗ sang đọc từ `cleaned_dataset.csv` (dữ liệu
+  thô, đúng hợp đồng mới của `/predict`).
+- **`/reset-state` không thực sự scale cluster thật.** Route cũ gán tay
+  `k3s_client.state.current_replicas = min_replicas` rồi gọi
+  `sync_agent_with_k3s()` — với `K3sClient` thật, hàm sync này đọc lại
+  `spec.replicas` từ cluster và **ghi đè** giá trị vừa gán, nên reset không
+  có tác dụng gì trên deployment thật (chỉ đúng "tình cờ" với mock vì mock
+  không có nguồn sự thật nào khác để ghi đè lại).
+  Đã verify lỗi này bằng cách gọi `/reset-state` trên cluster thật (minikube)
+  — `kubectl get deployment` vẫn giữ nguyên số replica cũ dù response trả
+  `current_replicas: 1`.
+  Đã sửa: route giờ gọi `k3s_client.scale_down(step=...)` với đúng số bước
+  cần thiết để về `min_replicas`, hoạt động đúng trên cả real và mock. Đã
+  verify lại bằng `kubectl` — deployment thật scale đúng về 1/1.

@@ -909,17 +909,20 @@ async function runPredict() {
 }
 
 function fillSampleData() {
+  // Giá trị THÔ (đơn vị gốc của dataset, không phải z-score đã chuẩn hóa) —
+  // /predict tự áp scaler.pkl trước khi đưa vào ONNX (xem modules/ai_service.py).
+  // Lấy từ dòng đầu dataset/data/output/cleaned_dataset.csv.
   const sample = {
-    cpu_usage: -1.6235199138520664,
-    memory_usage: 0.3783857583219464,
-    cpu_request: 1.7099695967416793,
-    cpu_limit: 0.2845814209737278,
-    memory_request: 1.3071642028562207,
-    memory_limit: -0.9124124409654414,
-    network_bandwidth_usage: -1.1834102498955394,
-    network_latency: -0.7337604042270234,
-    disk_io: 0.9223777591382988,
-    pod_lifetime_seconds: -1.0426472851540949
+    cpu_usage: 3.345496144976717,
+    memory_usage: 2135.3103654478373,
+    cpu_request: 1.5695415604262677,
+    cpu_limit: 3.6791523748987336,
+    memory_request: 3174.582782544709,
+    memory_limit: 5134.413852441214,
+    network_bandwidth_usage: 459.0157332207024,
+    network_latency: 13.72254182,
+    disk_io: 9.993579253,
+    pod_lifetime_seconds: 119648
   };
 
   Object.entries(sample).forEach(([key, value]) => {
@@ -927,7 +930,7 @@ function fillSampleData() {
     if (el) el.value = value;
   });
 
-  appendLog("Đã nạp sample X_test vào form", "info");
+  appendLog("Đã nạp sample thật (đơn vị gốc) vào form", "info");
 }
 
 function bindEvents() {

@@ -1,11 +1,15 @@
+import os
 import numpy as np
 import pandas as pd
 import onnxruntime as ort
 
 from decision_policy import DecisionPolicy
 
-ONNX_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\models\linear_regression_model.onnx"
-INPUT_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\dataset\data\output\X_test.csv"
+MODULES_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(MODULES_DIR)
+
+ONNX_PATH = os.path.join(BASE_DIR, "models", "linear_regression_model.onnx")
+INPUT_PATH = os.path.join(BASE_DIR, "dataset", "data", "output", "X_test.csv")
 
 
 def main():

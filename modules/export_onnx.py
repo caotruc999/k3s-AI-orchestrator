@@ -1,9 +1,13 @@
+import os
 import joblib
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
-MODEL_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\models\linear_regression_model.pkl"
-ONNX_PATH = r"d:\Thuc_tap_tot_nghiep\k3s-AI-orchestrator\models\linear_regression_model.onnx"
+MODULES_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(MODULES_DIR)
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "linear_regression_model.pkl")
+ONNX_PATH = os.path.join(BASE_DIR, "models", "linear_regression_model.onnx")
 
 NUM_FEATURES = 10
 TARGET_OPSET = 21

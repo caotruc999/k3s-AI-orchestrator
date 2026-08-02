@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import psutil
+import joblib
 from flask import Flask, request, jsonify, render_template
 import numpy as np
 import onnxruntime as ort
@@ -51,12 +52,23 @@ FEATURE_NAMES = [
     "pod_lifetime_seconds",
 ]
 
+SCALER_PATH = os.path.join(BASE_DIR, "dataset", "data", "output", "scaler.pkl")
+
 if not os.path.exists(ONNX_PATH):
     raise FileNotFoundError(f"Không tìm thấy mô hình ONNX tại: {ONNX_PATH}")
+
+if not os.path.exists(SCALER_PATH):
+    raise FileNotFoundError(f"Không tìm thấy scaler tại: {SCALER_PATH}")
 
 session = ort.InferenceSession(ONNX_PATH)
 input_name = session.get_inputs()[0].name
 output_name = session.get_outputs()[0].name
+
+# Model được huấn luyện trên dữ liệu đã qua StandardScaler (xem
+# dataset/preprocessing.py, bước 12). /predict phải áp cùng phép biến đổi
+# này lên input thô trước khi đưa vào ONNX, nếu không dự đoán sẽ vô nghĩa vì
+# lệch hẳn phân phối lúc train (trước đây thiếu bước này).
+scaler = joblib.load(SCALER_PATH)
 
 policy = DecisionPolicy()
 
@@ -270,11 +282,17 @@ def manual_scale():
 @app.route("/reset-state", methods=["POST"])
 def reset_state():
     try:
-        # Reset K3s mock state về ban đầu
-        k3s_client.state.current_replicas = k3s_client.state.min_replicas
+        # Đưa deployment về đúng min_replicas bằng scale_down() thật, không
+        # chỉ sửa k3s_client.state cục bộ — với K3sClient thật, state cục bộ
+        # bị sync_agent_with_k3s() ghi đè lại từ cluster ngay sau đó nên gán
+        # tay không có tác dụng (đã phát hiện lúc test: reset không scale
+        # thật, deployment vẫn giữ nguyên số replica cũ).
+        cluster_status = k3s_client.get_status()
+        step_down = cluster_status["current_replicas"] - cluster_status["min_replicas"]
+        if step_down > 0:
+            k3s_client.scale_down(step=step_down)
 
         # Reset AI agent state
-        agent.current_replicas = agent.config.min_replicas
         agent.last_scale_monotonic = None
 
         # Đồng bộ lại agent theo K3s
@@ -315,9 +333,13 @@ def predict():
     try:
         data = request.get_json() or {}
 
-        # 1. Trích xuất features & Suy luận qua ONNX
+        # 1. Trích xuất features thô (đơn vị gốc của dataset, KHÔNG phải giá
+        # trị đã chuẩn hóa) rồi áp scaler.pkl trước khi đưa vào ONNX — model
+        # được train trên dữ liệu đã StandardScaler nên bỏ qua bước này sẽ
+        # cho dự đoán sai lệch hoàn toàn.
         features = [float(data[name]) for name in FEATURE_NAMES]
-        input_array = np.array([features], dtype=np.float32)
+        scaled_features = scaler.transform([features])
+        input_array = scaled_features.astype(np.float32)
 
         predicted_score = session.run(
             [output_name],
