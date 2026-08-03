@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+tests/
+dataset/data/raw/
+dataset/data/output/visualization/
+notification/email/.env
+notification/email/config.json
+mail/
