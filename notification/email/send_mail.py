@@ -60,7 +60,7 @@ def send_alert_email(subject: str, message: str) -> bool:
 
 
 def build_alert_message(current_cpu: float, predicted_cpu: float, threshold: float) -> tuple[str, str]:
-    """Tạo sẵn tiêu đề + nội dung email theo mẫu chuẩn, dùng chung cho các nơi gọi trong app.py."""
+    """Tạo sẵn tiêu đề + nội dung email theo mẫu chuẩn, dùng chung cho các nơi gọi trong ai_service.py."""
     subject = "[CẢNH BÁO] Hệ thống Edge AI cần can thiệp"
     body = (
         f"Hệ thống phát hiện tải sắp vượt ngưỡng an toàn.\n\n"
