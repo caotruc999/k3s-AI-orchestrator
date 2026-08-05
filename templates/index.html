@@ -43,9 +43,24 @@
   /* ── SIDEBAR ── */
   .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px 0;display:flex;flex-direction:column;gap:2px}
   .nav-section{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:12px 16px 4px}
-  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;color:var(--muted);cursor:pointer;border-left:3px solid transparent;transition:all .15s;font-size:12px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;color:var(--muted);cursor:pointer;border-left:3px solid transparent;transition:background-color .25s,color .25s,border-color .25s;font-size:12px}
   .nav-item:hover{color:var(--text);background:var(--surface2)}
-  .nav-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--accent)}
+  .nav-item.active{color:var(--text);background:#3B82F61A;border-left-color:var(--accent);box-shadow:inset 0 0 0 1px #3B82F650}
+  .nav-item.active:hover{background:#3B82F626}
+
+  /* ── MODAL ── */
+  .modal-overlay{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .modal-overlay.show{display:flex}
+  .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:min(640px,100%);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px #000a}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}
+  .modal-body{padding:8px 18px 18px;overflow-y:auto}
+
+  @keyframes sectionFlash{
+    0%{box-shadow:0 0 0 2px #3B82F6aa,0 0 28px 6px #3B82F655}
+    60%{box-shadow:0 0 0 2px #3B82F6aa,0 0 28px 6px #3B82F655}
+    100%{box-shadow:0 0 0 0px transparent}
+  }
+  .section-flash{animation:sectionFlash 5s ease-out;border-radius:10px}
   .nav-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
   .dot-green{background:var(--accent2)}
   .dot-blue{background:var(--accent)}
@@ -159,6 +174,32 @@
   #section-history {
     scroll-margin-top: 90px;
   }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .layout{grid-template-columns:1fr;height:auto}
+    .sidebar{
+      flex-direction:row;flex-wrap:wrap;gap:4px;padding:10px;
+      border-right:none;border-bottom:1px solid var(--border);
+    }
+    .nav-section{display:none}
+    .nav-item{border-left:none;border-radius:6px;padding:6px 10px}
+    .nav-item.active{border-left:none;background:#3B82F620;box-shadow:inset 0 0 0 1px #3B82F650}
+    .stat-row{grid-template-columns:repeat(2,1fr)}
+    .grid2,.grid3{grid-template-columns:1fr}
+    .predict-grid{grid-template-columns:1fr !important}
+  }
+
+  @media (max-width: 560px) {
+    .topbar{flex-wrap:wrap;gap:8px;height:auto}
+    .topbar-right{flex-wrap:wrap;width:100%}
+    .stat-row{grid-template-columns:1fr}
+    .forecast-row{flex-wrap:wrap}
+    .fc-block{min-width:100px}
+    .thresh-row{flex-wrap:wrap;gap:6px}
+    .thresh-label{flex:1 1 100%}
+    table{display:block;overflow-x:auto;white-space:nowrap}
+  }
 </style>
 </head>
 <body>
@@ -188,7 +229,7 @@
     <div class="nav-section">Giám sát</div>
     <div class="nav-item" data-target="section-metrics"><span class="nav-dot dot-green"></span>Metrics realtime</div>
     <div class="nav-item" data-target="section-forecast"><span class="nav-dot dot-blue"></span>AI dự báo tải</div>
-    <div class="nav-item" data-target="section-history"><span class="nav-dot dot-warn"></span>Lịch sử cảnh báo</div>
+    <div class="nav-item" data-target="section-history"><span class="nav-dot dot-warn"></span>Lịch sử hoạt động</div>
 
     <div class="nav-section">Điều phối</div>
     <div class="nav-item" data-target="section-pods"><span class="nav-dot dot-green"></span>Quản lý Pod</div>
@@ -255,12 +296,12 @@
             <line x1="22" y1="24" x2="360" y2="24" stroke="#EF4444" stroke-width=".8" stroke-dasharray="4 3"/>
             <text x="300" y="22" fill="#EF4444" font-size="8">ngưỡng 75%</text>
             <!-- Thêm ID để Javascript can thiệp vẽ lại -->
-            <path id="cpu-path" d="M22,68 L58,62 L94,60 L130,55 L166,50 L202,46 L238,42 L274,36 L310,30 L346,26 L346,80 L22,80Z" fill="url(#gcpu)"/>
-            <polyline id="cpu-polyline" points="22,68 58,62 94,60 130,55 166,50 202,46 238,42 274,36 310,30 346,26" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="346" cy="26" r="4" fill="#F59E0B"/>
-            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-9m</text>
-            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-5m</text>
-            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-2m</text>
+            <path id="cpu-path" d="M22,80 L346,80 L346,80 L22,80Z" fill="url(#gcpu)"/>
+            <polyline id="cpu-polyline" points="22,80 346,80" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle id="cpu-dot" cx="346" cy="80" r="4" fill="#F59E0B"/>
+            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-45s</text>
+            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-30s</text>
+            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-15s</text>
             <text x="346" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">now</text>
           </svg>
         </div>
@@ -285,13 +326,15 @@
             <text x="0" y="18" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">100%</text>
             <text x="0" y="48" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">50%</text>
             <text x="0" y="78" fill="#7D8FA4" font-size="8" font-family="JetBrains Mono">0%</text>
+            <line x1="22" y1="38" x2="360" y2="38" stroke="#EF4444" stroke-width=".8" stroke-dasharray="4 3"/>
+            <text x="300" y="36" fill="#EF4444" font-size="8">ngưỡng 70%</text>
             <!-- Thêm ID để Javascript can thiệp vẽ lại -->
-            <path id="ram-path" d="M22,62 L58,60 L94,57 L130,55 L166,52 L202,50 L238,49 L274,48 L310,47 L346,47 L346,80 L22,80Z" fill="url(#gram)"/>
-            <polyline id="ram-polyline" points="22,62 58,60 94,57 130,55 166,52 202,50 238,49 274,48 310,47 346,47" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="346" cy="47" r="4" fill="#10B981"/>
-            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-9m</text>
-            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-5m</text>
-            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-2m</text>
+            <path id="ram-path" d="M22,80 L346,80 L346,80 L22,80Z" fill="url(#gram)"/>
+            <polyline id="ram-polyline" points="22,80 346,80" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle id="ram-dot" cx="346" cy="80" r="4" fill="#10B981"/>
+            <text x="22"  y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-45s</text>
+            <text x="130" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-30s</text>
+            <text x="238" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">-15s</text>
             <text x="346" y="95" fill="#7D8FA4" font-size="8" text-anchor="middle" font-family="JetBrains Mono">now</text>
           </svg>
         </div>
@@ -337,7 +380,7 @@
           <button class="btn-danger" id="btn-scale-down" type="button">✕ Scale DOWN</button>
           <button class="btn-warn2" id="btn-manual" type="button">⏸ Chuyển MANUAL</button>
           <button class="btn-purple" id="btn-auto" type="button">↺ Kích hoạt AI Scale</button>
-          <button id="resetStateBtn" class="btn btn-secondary">
+          <button id="resetStateBtn" class="btn btn-ghost">
             ↺ Reset State
           </button>
         </div>
@@ -487,7 +530,7 @@
       <div class="card" id="section-history">
         <div class="card-head">
           <div class="card-title">Lịch sử hoạt động</div>
-          <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="showToast('Xem toàn bộ log')">Xem tất cả</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" id="btn-view-all-history" type="button">Xem tất cả</button>
         </div>
 
         <div id="activity-log">
@@ -505,6 +548,19 @@
 
   </div><!-- end .main -->
 </div><!-- end .layout -->
+
+<!-- MODAL: TOÀN BỘ LỊCH SỬ HOẠT ĐỘNG -->
+<div class="modal-overlay" id="history-modal-overlay">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="card-title">Toàn bộ lịch sử hoạt động</div>
+      <button class="btn btn-ghost" id="btn-close-history-modal" type="button">✕ Đóng</button>
+    </div>
+    <div class="modal-body" id="history-modal-body">
+      <div style="color:var(--muted);font-size:12px">Đang tải…</div>
+    </div>
+  </div>
+</div>
 
 <script>
 const API = {
@@ -564,12 +620,24 @@ function makeLogItem(message, detail, type, timeLabel) {
   return item;
 }
 
+const MAX_VISIBLE_LOG_ITEMS = 5;
+
+function trimActivityLog() {
+  const logBox = $("activity-log");
+  if (!logBox) return;
+  const items = logBox.querySelectorAll(".alert-item:not(#activity-log-empty)");
+  items.forEach((item, i) => {
+    if (i >= MAX_VISIBLE_LOG_ITEMS) item.remove();
+  });
+}
+
 function appendLog(message, type = "info") {
   const logBox = $("activity-log");
   if (!logBox) return;
   $("activity-log-empty")?.remove();
   const now = new Date().toLocaleTimeString("vi-VN");
   logBox.prepend(makeLogItem(message, "Dashboard AI", type, now));
+  trimActivityLog();
 }
 
 function renderHistory(historyEntries) {
@@ -585,6 +653,57 @@ function renderHistory(historyEntries) {
     seenHistoryKeys.add(`${h.timestamp}-${h.message}`);
     const timeLabel = new Date(h.timestamp * 1000).toLocaleTimeString("vi-VN");
     logBox.prepend(makeLogItem(h.message, h.detail, h.type, timeLabel));
+  });
+  trimActivityLog();
+}
+
+async function openHistoryModal() {
+  const overlay = $("history-modal-overlay");
+  const body = $("history-modal-body");
+  if (!overlay || !body) return;
+
+  overlay.classList.add("show");
+  body.innerHTML = `<div style="color:var(--muted);font-size:12px">Đang tải…</div>`;
+
+  try {
+    const res = await fetch("/history");
+    const data = await res.json();
+    if (!res.ok) {
+      body.innerHTML = `<div style="color:var(--danger);font-size:12px">Không tải được lịch sử: ${data.error || "lỗi không rõ"}</div>`;
+      return;
+    }
+
+    const entries = Array.isArray(data.history) ? data.history : [];
+    if (entries.length === 0) {
+      body.innerHTML = `<div style="color:var(--muted);font-size:12px">Chưa có sự kiện nào</div>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    entries.forEach(h => {
+      const timeLabel = new Date(h.timestamp * 1000).toLocaleString("vi-VN");
+      body.appendChild(makeLogItem(h.message, h.detail, h.type, timeLabel));
+    });
+  } catch (err) {
+    body.innerHTML = `<div style="color:var(--danger);font-size:12px">Lỗi kết nối: ${err.message}</div>`;
+  }
+}
+
+function closeHistoryModal() {
+  $("history-modal-overlay")?.classList.remove("show");
+}
+
+function bindHistoryModal() {
+  $("btn-view-all-history")?.addEventListener("click", openHistoryModal);
+  $("btn-close-history-modal")?.addEventListener("click", closeHistoryModal);
+
+  const overlay = $("history-modal-overlay");
+  overlay?.addEventListener("click", (e) => {
+    if (e.target === overlay) closeHistoryModal();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeHistoryModal();
   });
 }
 
@@ -622,6 +741,50 @@ function setBadgeState(id, isWarn) {
   el.classList.toggle("badge-green", !isWarn);
 }
 
+const MAX_CHART_POINTS = 10;
+const cpuHistory = [];
+const ramHistory = [];
+
+function pctToY(pct) {
+  const clamped = Math.max(0, Math.min(100, pct ?? 0));
+  return 80 - (clamped / 100) * 60;
+}
+
+function updateChartSVG(history, pathId, polylineId, dotId) {
+  if (history.length === 0) return;
+  const n = history.length;
+  const step = n > 1 ? (346 - 22) / (n - 1) : 0;
+  const coords = history.map((v, i) => ({
+    x: n > 1 ? 22 + i * step : 346,
+    y: pctToY(v)
+  }));
+
+  const polyEl = $(polylineId);
+  if (polyEl) {
+    polyEl.setAttribute("points", coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" "));
+  }
+
+  const pathEl = $(pathId);
+  if (pathEl) {
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    const line = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" L");
+    pathEl.setAttribute("d", `M${line} L${last.x.toFixed(1)},80 L${first.x.toFixed(1)},80 Z`);
+  }
+
+  const dotEl = $(dotId);
+  if (dotEl) {
+    const last = coords[coords.length - 1];
+    dotEl.setAttribute("cx", last.x.toFixed(1));
+    dotEl.setAttribute("cy", last.y.toFixed(1));
+  }
+}
+
+function pushChartSample(history, value) {
+  history.push(value ?? 0);
+  if (history.length > MAX_CHART_POINTS) history.shift();
+}
+
 function updateStatCards(data) {
   const cpuWarn = data.cpu_percent >= 75;
   setText("stat-cpu", `${data.cpu_percent}%`);
@@ -630,6 +793,8 @@ function updateStatCards(data) {
   setBadgeState("stat-cpu-badge", cpuWarn);
   setText("cpu-current-badge", `${data.cpu_percent}% hiện tại`);
   setBadgeState("cpu-current-badge", cpuWarn);
+  pushChartSample(cpuHistory, data.cpu_percent);
+  updateChartSVG(cpuHistory, "cpu-path", "cpu-polyline", "cpu-dot");
 
   const ramWarn = data.memory_percent >= 70;
   setText("stat-ram", `${data.memory_percent}%`);
@@ -638,6 +803,8 @@ function updateStatCards(data) {
   setBadgeState("stat-ram-badge", ramWarn);
   setText("ram-current-badge", `${data.memory_percent}% hiện tại`);
   setBadgeState("ram-current-badge", ramWarn);
+  pushChartSample(ramHistory, data.memory_percent);
+  updateChartSVG(ramHistory, "ram-path", "ram-polyline", "ram-dot");
 
   if (data.ai_accuracy === null || data.ai_accuracy === undefined) {
     setText("stat-accuracy", "-");
@@ -983,6 +1150,15 @@ function bindEvents() {
   $("btn-save-thresholds")?.addEventListener("click", saveThresholds);
 }
 
+function setActiveNavItem(targetId) {
+  document.querySelectorAll(".nav-item[data-target]").forEach(i => {
+    i.classList.toggle("active", i.getAttribute("data-target") === targetId);
+  });
+}
+
+let suppressScrollSpyUntil = 0;
+let currentFlashEl = null;
+
 function bindSidebarNavigation() {
   const navItems = document.querySelectorAll(".nav-item[data-target]");
 
@@ -990,17 +1166,31 @@ function bindSidebarNavigation() {
     item.style.cursor = "pointer";
 
     item.addEventListener("click", () => {
-      navItems.forEach(i => i.classList.remove("active"));
-      item.classList.add("active");
-
       const targetId = item.getAttribute("data-target");
-      const targetEl = document.getElementById(targetId);
+      setActiveNavItem(targetId);
+      // Chặn scroll-spy ghi đè lại active trong lúc đang cuộn mượt (smooth scroll).
+      suppressScrollSpyUntil = Date.now() + 800;
 
+      // Tắt sáng ngay lập tức ở khung cũ nếu đang bấm sang mục khác.
+      if (currentFlashEl && currentFlashEl !== document.getElementById(targetId)) {
+        currentFlashEl.classList.remove("section-flash");
+      }
+
+      const targetEl = document.getElementById(targetId);
       if (targetEl) {
         targetEl.scrollIntoView({
           behavior: "smooth",
           block: "start"
         });
+
+        targetEl.classList.remove("section-flash");
+        void targetEl.offsetWidth; // reset animation nếu bấm lại cùng mục liên tiếp
+        targetEl.classList.add("section-flash");
+        currentFlashEl = targetEl;
+        targetEl.addEventListener("animationend", () => {
+          targetEl.classList.remove("section-flash");
+          if (currentFlashEl === targetEl) currentFlashEl = null;
+        }, { once: true });
       }
 
       if (typeof showToast === "function") {
@@ -1010,9 +1200,38 @@ function bindSidebarNavigation() {
   });
 }
 
+function bindScrollSpy() {
+  const sections = Array.from(document.querySelectorAll(".nav-item[data-target]"))
+    .map(item => document.getElementById(item.getAttribute("data-target")))
+    .filter(Boolean);
+
+  const scrollRoot = document.querySelector(".main");
+  if (sections.length === 0 || !scrollRoot || !("IntersectionObserver" in window)) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    if (Date.now() < suppressScrollSpyUntil) return;
+
+    const visible = entries
+      .filter(e => e.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+
+    if (visible.length > 0) {
+      setActiveNavItem(visible[0].target.id);
+    }
+  }, {
+    root: scrollRoot,
+    rootMargin: "-10% 0px -70% 0px",
+    threshold: [0, 0.25, 0.5, 0.75, 1]
+  });
+
+  sections.forEach(section => observer.observe(section));
+}
+
 async function initDashboard() {
   bindEvents();
   bindSidebarNavigation();
+  bindScrollSpy();
+  bindHistoryModal();
   await fetchStatus();
   await loadThresholds();
   setInterval(fetchStatus, 5000);

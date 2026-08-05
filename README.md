@@ -144,6 +144,24 @@ python -m unittest discover -s tests -v
 Test các phần logic thuần (không cần cluster/model): `decision_policy`,
 `ai_agent`, `K3sClientMock`.
 
+## Đánh giá mô hình
+
+Linear Regression, đánh giá trên tập test (`dataset/data/output/X_test.csv` /
+`y_test.csv`), chạy qua `python modules/train_linear.py`:
+
+| Chỉ số | Giá trị |
+|---|---|
+| MAE  | 0.145934 |
+| RMSE | 0.196343 |
+| R²   | 0.780983 |
+
+Model giải thích được ~78% phương sai của `resource_pressure_score`. Hệ số
+ảnh hưởng lớn nhất (trị tuyệt đối): `memory_limit` (-0.199), `memory_usage`
+(+0.197), `cpu_usage` (+0.189), `cpu_limit` (-0.158) — 4 đặc trưng tài
+nguyên host/container tác động mạnh nhất tới điểm dự đoán, đúng với kỳ vọng
+domain (dùng nhiều tài nguyên hơn giới hạn cho phép → áp lực tăng). Chi tiết
+đầy đủ: `dataset/data/output/linear_feature_coefficients.csv`.
+
 ## Hạn chế đã biết
 
 - Bảo mật: repo từng commit nhầm App Password Gmail thật vào
